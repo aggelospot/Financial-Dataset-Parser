@@ -70,7 +70,19 @@ STAGING_TABLE_PRE_SCHEMA = """
     );
 """
 
-
+STAGING_TABLE_TAG_SCHEMA = """
+CREATE TABLE staging_tag (
+	tag VARCHAR(256) NOT NULL,
+	version VARCHAR(20) NOT NULL,
+	custom BOOLEAN NOT NULL,
+	abstract BOOLEAN NOT NULL,
+	datatype VARCHAR(100) NULL,
+	iord VARCHAR(1) NULL,
+	crdr VARCHAR(1) NULL,
+	tlabel VARCHAR(512) NULL,
+	doc TEXT NULL
+);
+"""
 
 
 
@@ -89,6 +101,24 @@ CREATE TABLE pre (
 );
 
 
+CREATE TABLE tag (
+    tag VARCHAR(256) NOT NULL,
+    version VARCHAR(20) NOT NULL,
+    custom BOOLEAN NOT NULL,
+    abstract BOOLEAN NOT NULL,
+    datatype VARCHAR(100),
+    iord VARCHAR(1),
+    crdr VARCHAR(1),
+    tlabel VARCHAR(512),
+    doc TEXT,
+	UNIQUE(tag, version)
+);
+
+CREATE INDEX idx_tag_version ON tag(version);
+CREATE INDEX idx_tag_tlabel ON tag(tlabel);
+CREATE INDEX idx_tag_tag ON tag(tag);
 
 
 """
+
+

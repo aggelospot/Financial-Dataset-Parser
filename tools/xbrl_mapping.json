@@ -1,173 +1,269 @@
 {
-  "IncomeStatement": {
-    "revenues": {
-      "match_threshold": 80,
-      "concepts": [
-        "TotalRevenues",
-        "Revenues",
-        "SalesRevenueNet",
-        "SalesOrRevenue"
-      ]
-    },
-    "operating_expenses": {
-      "match_threshold": 80,
-      "concepts": [
-        "OperatingExpenses",
-        "CostOfGoodsSold",
-        "CostAndExpenseOperating",
-        "CostsAndExpenses",
-        "GeneralAndAdministrativeExpense"
-      ]
-    },
-    "operating_income": {
-      "match_threshold": 80,
-      "concepts": [
-        "OperatingIncomeLoss"
-      ]
-    },
-    "net_income": {
-      "match_threshold": 80,
-      "concepts": [
-        "NetIncomeLoss",
-        "ProfitLoss"
-      ]
-    },
-    "earnings_per_share_basic": {
-      "match_threshold": 80,
-      "concepts": [
-        "EarningsPerShareBasic"
-      ]
-    },
-    "earnings_per_share_diluted": {
-      "match_threshold": 80,
-      "concepts": [
-        "EarningsPerShareDiluted",
-        "DilutedEarningsLossPerShare",
-        "EarningsPerShareBasicAndDiluted"
-      ]
-    }
-  },
-  "BalanceSheet": {
-    "total_current_assets": {
-      "match_threshold": 80,
-      "concepts": [
-        "AssetsCurrent"
-      ]
-    },
-    "total_noncurrent_assets": {
-      "match_threshold": 80,
-      "concepts": [
-        "AssetsNoncurrent"
-      ]
-    },
-    "total_assets": {
-      "match_threshold": 80,
-      "concepts": [
-        "Assets",
-        "TotalAssets",
-        "AssetsNet"
-      ]
-    },
-    "total_current_liabilities": {
-      "match_threshold": 80,
-      "concepts": [
-        "LiabilitiesCurrent",
-        "CurrentLiabilities",
-        "TotalCurrentLiabilities"
-      ]
-    },
-    "total_noncurrent_liabilities": {
-      "match_threshold": 80,
-      "concepts": [
-        "LiabilitiesNoncurrent",
-        "NoncurrentLiabilities",
-        "LongTermLiabilities"
-      ]
-    },
-    "total_liabilities": {
-      "match_threshold": 80,
-      "concepts": [
-        "Liabilities",
-        "TotalLiabilities",
-        "LiabilitiesNet"
-      ]
-    },
-    "stockholders_equity": {
-      "match_threshold": 80,
-      "concepts": [
-        "StockholdersEquity",
-        "ShareholdersEquity",
-        "Equity"
-      ]
-    },
-    "total_liabilities_equity": {
-      "match_threshold": 80,
-      "concepts": [
-        "LiabilitiesAndStockholdersEquity",
-        "TotalLiabilitiesAndEquity",
-        "LiabilitiesAndEquity"
-      ]
-    }
-  },
-  "CashFlow": {
-    "net_cash_from_operating_activities": {
-      "match_threshold": 80,
-      "concepts": [
-        "NetCashProvidedByUsedInOperatingActivities",
-        "NetCashFromOperatingActivities",
-        "OperatingCashFlow"
-      ]
-    },
-    "net_cash_from_investing_activities": {
-      "match_threshold": 80,
-      "concepts": [
-        "NetCashProvidedByUsedInInvestingActivities",
-        "NetCashFromInvestingActivities",
-        "InvestingCashFlow"
-      ]
-    },
-    "net_cash_from_financing_activities": {
-      "match_threshold": 80,
-      "concepts": [
-        "NetCashProvidedByUsedInFinancingActivities",
-        "NetCashFromFinancingActivities",
-        "FinancingCashFlow"
-      ]
-    },
-    "net_increase_decrease_in_cash": {
-      "match_threshold": 80,
-      "concepts": [
-        "IncreaseDecreaseInCashAndCashEquivalents",
-        "NetChangeInCashAndCashEquivalents",
-        "NetChangeInCash"
-      ]
-    },
-    "cash": {
-      "match_threshold": 80,
-      "concepts": [
-        "Cash",
-        "TotalCash"
-      ]
-    }
-  },
-  "StatementOfStockholdersEquity": {
-    "stockholders_equity": {
-      "match_threshold": 80,
-      "concepts": [
-        "StockHoldersEquity"
-      ]
-    },
-    "other_comprehensive_income": {
-      "match_threshold": 90,
-      "concepts": [
-        "OtherComprehensiveIncome",
-        "OtherComprehensiveIncomeNetOfTax",
-        "AvailableForSaleSecuritiesChange",
-        "OtherComprehensiveIncomeLossNetOfTax",
-        "AccumulatedOtherComprehensiveIncome",
-        "OCI"
-      ]
-    }
-  }
+	"IncomeStatement":{
+		"revenue":{
+			"match_threshold":90,
+			"concepts":[
+				"Revenues",
+				"TotalRevenue",
+				"RevenueNet"
+			]
+		},
+		"sga_expenses":{
+			"match_threshold":80,
+			"concepts":[
+				"SellingGeneralAndAdministrativeExpense"
+			]
+		},
+		"gross_profit": {
+		  "match_threshold": 85,
+		  "concepts": [
+			"GrossProfit"
+		  ]
+		},
+		"cost_of_goods_sold":{
+			"match_threshold":80,
+			"concepts":[
+				"CostOfGoodsSold",
+				"CostOfSales"
+			]
+		},
+		"operating_expenses":{
+			"match_threshold":80,
+			"concepts":[
+				"CostsandExpenses",
+				"OperatingExpenses",
+				"CostOfServices"
+			]
+		},
+		"operating_income":{
+			"match_threshold":80,
+			"concepts":[
+				"OperatingIncome",
+				"OperatingIncomeLoss"
+			]
+		},
+		"interest_expense":{
+			"match_threshold":80,
+			"concepts":[
+				"InterestExpense",
+				"InterestExpenseNonoperating",
+				"InterestExpenseOperating"
+			]
+		},
+		"pretax_income":{
+			"match_threshold":80,
+			"concepts":[
+				"IncomeLossBeforeIncomeTaxExpenseBenefit",
+				"IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+				"IncomeLossBeforeTax"
+			]
+		},
+		"income_taxes":{
+			"match_threshold":80,
+			"concepts":[
+				"IncomeTaxExpenseBenefit",
+				"IncomeTaxExpense"
+			]
+		},
+		"net_income":{
+			"match_threshold":85,
+			"concepts":[
+				"NetIncome",
+				"NetIncomeLoss",
+				"ProfitLoss",
+				"IncomeLossAttributableToParent"
+			]
+		},
+		"earnings_per_share_basic":{
+			"match_threshold":100,
+			"concepts":[
+				"EarningsPerShareBasic",
+				"BasicEarningsLossPerShare"
+			]
+		},
+		"earnings_per_share_diluted":{
+			"match_threshold":100,
+			"concepts":[
+				"EarningsPerShareDiluted",
+				"DilutedEarningsLossPerShare"
+			]
+		}
+	},
+	"BalanceSheet":{
+		"goodwill": {
+      		"match_threshold": 100,
+      		"concepts": [
+        		"Goodwill"
+      		]
+    	},
+		"assets":{
+			"match_threshold":100,
+			"concepts":[
+				"Assets",
+				"TotalAssets",
+				"AssetsNet"
+			]
+		},
+		"current_assets":{
+			"match_threshold":100,
+			"concepts":[
+				"AssetsCurrent",
+				"TotalCurrentAssets"
+			]
+		},
+		"noncurrent_assets":{
+			"match_threshold":80,
+			"concepts":[
+				"AssetsNoncurrent",
+				"TotalNoncurrentAssets"
+			]
+		},
+		"cash_and_cash_equivalents":{
+			"match_threshold":80,
+			"concepts":[
+				"CashAndCashEquivalents",
+				"CashAndCashEquivalentsAtCarryingValue"
+			]
+		},
+		"short_term_investments":{
+			"match_threshold":80,
+			"concepts":[
+				"MarketableSecuritiesCurrent",
+				"ShortTermInvestments",
+				"AvailableForSaleSecuritiesCurrent"
+			]
+		},
+		"accounts_receivable":{
+			"match_threshold":95,
+			"concepts":[
+				"AccountsReceivableNetCurrent",
+				"AccountsReceivable",
+				"AccountsReceivableNet"
+			]
+		},
+		"inventory":{
+			"match_threshold":80,
+			"concepts":[
+				"InventoryNet",
+				"Inventories",
+				"Inventory"
+			]
+		},
+		"property_plant_and_equipment_net":{
+			"match_threshold":80,
+			"concepts":[
+				"PropertyPlantAndEquipmentNet",
+				"PropertyPlantAndEquipment",
+				"PP&ENet"
+			]
+		},
+		"accounts_payable":{
+			"match_threshold":80,
+			"concepts":[
+				"AccountsPayableCurrent",
+				"AccountsPayableTradeCurrent",
+				"AccountsPayable"
+			]
+		},
+		"current_liabilities":{
+			"match_threshold":80,
+			"concepts":[
+				"LiabilitiesCurrent",
+				"CurrentLiabilities",
+				"TotalCurrentLiabilities"
+			]
+		},
+		"long_term_debt":{
+			"match_threshold":80,
+			"concepts":[
+				"LongTermDebt",
+				"LongTermDebtNoncurrent",
+				"LongTermDebtAndCapitalLeaseObligations"
+			]
+		},
+		"noncurrent_liabilities":{
+			"match_threshold":80,
+			"concepts":[
+				"LiabilitiesNoncurrent",
+				"NoncurrentLiabilities",
+				"LongTermLiabilities"
+			]
+		},
+		"liabilities":{
+			"match_threshold":80,
+			"concepts":[
+				"LiabilitiesAndStockholdersEquity",
+				"TotalLiabilities",
+				"LiabilitiesNet"
+			]
+		}
+	},
+	"CashFlow":{
+		"net_cash_from_operating_activities":{
+			"match_threshold":80,
+			"concepts":[
+				"NetCashProvidedByUsedInOperatingActivities",
+				"NetCashFromOperatingActivities",
+				"OperatingCashFlow"
+			]
+		},
+		"net_cash_from_investing_activities":{
+			"match_threshold":80,
+			"concepts":[
+				"NetCashProvidedByUsedInInvestingActivities",
+				"NetCashFromInvestingActivities",
+				"InvestingCashFlow"
+			]
+		},
+		"net_cash_from_financing_activities":{
+			"match_threshold":80,
+			"concepts":[
+				"NetCashProvidedByUsedInFinancingActivities",
+				"NetCashFromFinancingActivities",
+				"FinancingCashFlow"
+			]
+		},
+		"cash_end_of_period":{
+			"match_threshold":80,
+			"concepts":[
+				"CashAndCashEquivalentsAtCarryingValue",
+				"CashEndOfPeriod",
+				"Cash"
+			]
+		},
+		"depreciation_and_amortization":{
+			"match_threshold":80,
+			"concepts":[
+				"DepreciationDepletionAndAmortization",
+				"DepreciationAndAmortizationExpense",
+				"DepreciationAndAmortization"
+			]
+		},
+		"capital_expenditures":{
+			"match_threshold":80,
+			"concepts":[
+				"PaymentsToAcquirePropertyPlantAndEquipment",
+				"CapitalExpenditures",
+				"PurchaseOfPropertyPlantAndEquipment"
+			]
+		}
+	},
+	"StatementOfStockholdersEquity":{
+		"accumulated_other_comprehensive_income":{
+			"match_threshold":90,
+			"concepts":[
+				"AccumulatedOtherComprehensiveIncome",
+				"OtherComprehensiveIncome",
+				"OtherComprehensiveIncomeLossNetOfTax"
+			]
+		},
+		"stockholders_equity":{
+			"match_threshold":80,
+			"concepts":[
+				"StockholdersEquity",
+				"ShareholdersEquity",
+				"TotalShareholdersEquity"
+			]
+		}
+	}
 }
-

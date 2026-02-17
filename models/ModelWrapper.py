@@ -59,19 +59,15 @@ class GeneralizedTorchModel:
         self.lr = lr
         self.random_state = random_state
 
-        # Set the random seeds for reproducibility
         torch.manual_seed(self.random_state)
         np.random.seed(self.random_state)
 
-        # Build the model
         if self.architecture == 'logistic':
-            # Single-layer logistic regression
             self.model = nn.Sequential(
                 nn.Linear(self.input_dim, 1)
             )
-            self.use_logits = True  # We'll apply sigmoid in inference
+            self.use_logits = True
         elif self.architecture == 'mlp':
-            # Simple MLP with one hidden layer
             self.model = nn.Sequential(
                 nn.Linear(self.input_dim, self.hidden_dim),
                 nn.ReLU(),
@@ -102,7 +98,7 @@ class GeneralizedTorchModel:
             loss.backward()
             self.optimizer.step()
 
-            # Optional: print or track training loss
+            # print or track training loss
             # if (epoch+1) % 5 == 0:
             #     print(f"Epoch [{epoch+1}/{self.epochs}], Loss: {loss.item():.4f}")
 
@@ -120,7 +116,6 @@ class GeneralizedTorchModel:
             if self.use_logits:
                 probs = torch.sigmoid(logits)
             else:
-                # If you had an architecture that already outputs probabilities
                 probs = logits
         return probs.view(-1).numpy()  # 1D array of shape [n_samples,]
 
