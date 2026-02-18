@@ -154,38 +154,27 @@ def build_sparse_dataset(
     )
 
 
-def resolve_input_path() -> str:
-    """Resolve input ECL path from config, supporting relative or absolute values."""
-    if os.path.isabs(config.ECL_FILE_PATH):
-        return config.ECL_FILE_PATH
-    return os.path.join(config.DATA_DIR, config.ECL_FILE_PATH)
-
-
-def resolve_output_path(output_name: str) -> str:
-    """Write all outputs under OUTPUT_DIR, using the provided file name."""
-    return os.path.join(config.OUTPUT_DIR, os.path.basename(output_name))
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate sparse ECL + companyfacts dataset.")
     parser.add_argument(
-        "--max-rows",
-        type=int,
-        required=True,
-        help="Mandatory row limit for test runs.",
+        "--input",
+        default=config.ECL_FILE_PATH,
+        help="Path to source ECL JSONL file.",
     )
     parser.add_argument(
         "--output",
-        default="ecl_companyfacts_sparse.json",
-        help="Optional output file name saved under outputs/ (default: ecl_companyfacts_sparse.json).",
+        default=os.path.join(config.OUTPUT_DIR, "ecl_companyfacts_sparse.json"),
+        help="Path to output sparse JSONL file.",
+    )
+    parser.add_argument(
+        "--max-rows",
+        type=int,
+        default=None,
+        help="Optional row limit for test runs.",
     )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    build_sparse_dataset(
-        input_path=resolve_input_path(),
-        output_path=resolve_output_path(args.output),
-        max_rows=args.max_rows,
-    )
+    build_sparse_dataset(input_path=args.input, output_path=args.output, max_rows=args.max_rows)
