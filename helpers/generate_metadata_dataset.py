@@ -28,7 +28,7 @@ import re
 
 
 DEFAULT_TEXT_COLUMNS_TO_DROP = ("opinion_text", "item_7")
-DEFAULT_INT_COLUMNS = ("year", "reportDateIndex", "isXBRL")
+DEFAULT_INT_COLUMNS = ("cik", "gvkey", "year", "reportDateIndex", "isXBRL")
 
 
 def _cast_selected_columns_to_int(row: Dict[str, Any], int_columns=DEFAULT_INT_COLUMNS) -> Dict[str, Any]:
