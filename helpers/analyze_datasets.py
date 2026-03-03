@@ -26,7 +26,7 @@ from tools.data_loader import DataLoader
 DATASET_PATHS: Dict[str, str] = {
     "sparse": config.ECL_COMPANYFACTS_SPARSE_PATH,
     "dense": config.ECL_COMPANYFACTS_DENSE_PATH,
-    "metadata": config.ECL_METADATA_NOTEXT_PATH,
+    "metadata": config.ECL_METADATA_PATH,
 }
 
 
@@ -71,7 +71,7 @@ def calculate_isxbrl_distribution(df: pd.DataFrame) -> pd.DataFrame:
 def analyze_dataset(
     dataset_name: str,
     input_path: Optional[str] = None,
-    reference_columns_path: str = config.ECL_COMPANYFACTS_NOTEXT_PATH,
+    reference_columns_path: str = config.ECL_COMPANYFACTS_DENSE_PATH,
 ) -> Dict[str, object]:
     """Run initial dataset analysis and return structured results."""
     loader = DataLoader()
@@ -113,7 +113,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--reference-columns-path",
-        default=config.ECL_COMPANYFACTS_NOTEXT_PATH,
+        default=config.ECL_COMPANYFACTS_DENSE_PATH,
         help="Path to ecl_companyfacts_no_text dataset used to infer metadata + label columns.",
     )
     return parser.parse_args()

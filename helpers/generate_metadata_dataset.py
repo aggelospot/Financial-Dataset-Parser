@@ -152,7 +152,7 @@ def create_metadata_dataset(
     output_path: str,
     submissions_dir: str = config.SEC_SUBMISSIONS_DIR,
     max_rows: Optional[int] = None,
-    min_year: Optional[int] = 2010,
+    min_year: Optional[int] = 2000,
     drop_columns: Iterable[str] = DEFAULT_TEXT_COLUMNS_TO_DROP,
 ) -> int:
     """Create metadata-enriched JSONL dataset.
