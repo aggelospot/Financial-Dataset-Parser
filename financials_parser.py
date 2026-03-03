@@ -511,12 +511,8 @@ def match_concept_in_section(target_concepts, section_items):
                     best_score = score
 
             # If the best match is above a threshold, store
-            # (Tune threshold as needed, e.g. 70, 80, 90)
             if best_score >= 80:
-                # Instead of storing the concept name, you might prefer to store item.get('value')
-                # if the JSON includes numeric amounts. For demonstration, we store the concept string.
                 if col_name in row:
-                    # print("row col ", row[col_name])
                     prev_score = fuzz.partial_ratio(row[col_name].lower(), concept_lower)
                     if best_score > prev_score:
                         # print(f"REPLACED {row[col_name]} with {concept}, prevScore: {prev_score}, new score: {best_score}")
