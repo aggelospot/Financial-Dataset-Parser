@@ -28,7 +28,6 @@ from tools.data_loader import DataLoader
 import json
 
 
-DEFAULT_OUTPUT_PATH = os.path.join(config.OUTPUT_DIR, "ecl_with_financial_tags.csv")
 
 
 def create_dense_dataset2(input_path: str, output_path: str) -> None:
@@ -37,7 +36,7 @@ def create_dense_dataset2(input_path: str, output_path: str) -> None:
         data_loader = DataLoader()
         conn = create_connection()
 
-        ecl = data_loader.load_dataset(config.ECL_METADATA_NOTEXT_PATH, alias='ecl', lines=True)
+        metadata = data_loader.load_dataset(input_path, alias='ecl', lines=True)
         with open(config.XBRL_MAPPING_PATH, 'r') as file:
             xbrl_mapping = json.load(file)
 
@@ -49,12 +48,12 @@ def create_dense_dataset2(input_path: str, output_path: str) -> None:
                 if key not in tag_list:  # Avoid duplicates
                     tag_list.append(key)
         for tag in tag_list:
-            ecl[tag] = None
+            metadata[tag] = None
 
         results = []
         filing_cache = {}  # {accession_number: {tag: value}}
-        for idx, row in ecl.iterrows():
-            print(f"\rCurrent row: {idx}/{len(ecl)}", end='')
+        for idx, row in metadata.iterrows():
+            print(f"\rCurrent row: {idx}/{len(metadata)}", end='')
             # if idx > 300: break
             if row['isXBRL'] == 0:
                 continue  # skip non-XBRL filings
@@ -112,15 +111,15 @@ def create_dense_dataset2(input_path: str, output_path: str) -> None:
             for concept_name, sec_tag in metadata_row.items():
                 if concept_name in tag_list:  # skip meta fields
                     val = filing_cache[adsh].get(sec_tag)
-                    ecl.at[idx, concept_name] = val
+                    metadata.at[idx, concept_name] = val
 
             results.append(metadata_row)
 
         result_df = pd.DataFrame(results)
         print("Resulting df: \n", result_df.head(1000))
-        print("Resulting ecl df \n", ecl.head(100))
+        print("Resulting ecl df \n", metadata.head(100))
         data_loader.save_dataset(result_df, os.path.join(config.OUTPUT_DIR, "tags.csv"))
-        data_loader.save_dataset(ecl, os.path.join(config.OUTPUT_DIR, "ecl_with_financial_tags.csv"))
+        data_loader.save_dataset(metadata, output_path)
 
 
 
@@ -140,7 +139,7 @@ def create_dense_dataset(input_path: str, output_path: str) -> None:
 
     # The retrieval function writes to the historical default output file.
     # If a custom output is provided, persist the same dataframe to that path as well.
-    if os.path.abspath(output_path) != os.path.abspath(DEFAULT_OUTPUT_PATH):
+    if os.path.abspath(output_path) != os.path.abspath(config.COMPANYFACTS_DENSE_PATH):
         data_loader.save_dataset(ecl_metadata, out_path=output_path)
 
 
@@ -149,12 +148,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate dense ECL + SEC financial tags dataset.")
     parser.add_argument(
         "--input",
-        default=config.ECL_METADATA_NOTEXT_PATH,
+        default=config.COMPANYFACTS_METADATA_PATH,
         help="Path to metadata JSONL input (without opinion_text/item_7).",
     )
     parser.add_argument(
         "--output",
-        default=DEFAULT_OUTPUT_PATH,
+        default=config.COMPANYFACTS_DENSE_PATH,
         help="Path to dense CSV output.",
     )
     return parser.parse_args()

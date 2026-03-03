@@ -165,7 +165,9 @@ def create_metadata_dataset(
     rows_written = 0
 
     with open(input_path, "r", encoding="utf-8") as source, open(output_path, "w", encoding="utf-8") as destination:
+
         for line_number, line in enumerate(source, start=1):
+            print(f"\rCurrent row: {rows_written}", end='')
             if max_rows is not None and rows_written >= max_rows:
                 break
 
@@ -186,8 +188,8 @@ def create_metadata_dataset(
             destination.write(json.dumps(metadata_row) + "\n")
             rows_written += 1
 
-            if rows_written % 100 == 0:
-                print(f"Processed {rows_written:,} rows (source line {line_number:,})", flush=True)
+            # if rows_written % 100 == 0:
+            #     print(f"Processed {rows_written:,} rows (source line {line_number:,})", flush=True)
 
     return rows_written
 
@@ -197,7 +199,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", default=config.ECL_FILE_PATH, help="Path to source ECL JSONL file.")
     parser.add_argument(
         "--output",
-        default=config.ECL_METADATA_NOTEXT_PATH,
+        default=config.COMPANYFACTS_METADATA_PATH,
         help="Path for metadata-enriched JSONL output.",
     )
     parser.add_argument(
@@ -214,7 +216,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-year",
         type=int,
-        default=2010,
+        default=2004,
         help="Optional year filter. Set to a negative value to disable filtering.",
     )
     return parser.parse_args()
