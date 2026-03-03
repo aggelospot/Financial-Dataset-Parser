@@ -28,6 +28,38 @@ import re
 
 
 DEFAULT_TEXT_COLUMNS_TO_DROP = ("opinion_text", "item_7")
+DEFAULT_INT_COLUMNS = ("year", "reportDateIndex", "isXBRL")
+
+
+def _cast_selected_columns_to_int(row: Dict[str, Any], int_columns=DEFAULT_INT_COLUMNS) -> Dict[str, Any]:
+    """Force selected numeric columns to be ints when values are present and integral."""
+    normalized = dict(row)
+
+    for column in int_columns:
+        value = normalized.get(column)
+        if value is None or isinstance(value, bool):
+            continue
+
+        if isinstance(value, int):
+            continue
+
+        if isinstance(value, float):
+            if value.is_integer():
+                normalized[column] = int(value)
+            continue
+
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped == "":
+                continue
+            try:
+                parsed_float = float(stripped)
+                if parsed_float.is_integer():
+                    normalized[column] = int(parsed_float)
+            except ValueError:
+                continue
+
+    return normalized
 
 
 def clean_cik(cik_value: Any) -> str:
@@ -144,7 +176,7 @@ def build_metadata_row(
     )
     output_row.update(submissions_metadata)
 
-    return output_row
+    return _cast_selected_columns_to_int(output_row)
 
 
 def create_metadata_dataset(
