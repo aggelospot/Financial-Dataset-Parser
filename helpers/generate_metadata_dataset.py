@@ -28,39 +28,6 @@ import re
 
 
 DEFAULT_TEXT_COLUMNS_TO_DROP = ("opinion_text", "item_7")
-DEFAULT_INT_COLUMNS = ("cik", "gvkey", "year", "reportDateIndex", "isXBRL")
-
-
-def _cast_selected_columns_to_int(row: Dict[str, Any], int_columns=DEFAULT_INT_COLUMNS) -> Dict[str, Any]:
-    """Force selected numeric columns to be ints when values are present and integral."""
-    normalized = dict(row)
-
-    for column in int_columns:
-        value = normalized.get(column)
-        if value is None or isinstance(value, bool):
-            continue
-
-        if isinstance(value, int):
-            continue
-
-        if isinstance(value, float):
-            if value.is_integer():
-                normalized[column] = int(value)
-            continue
-
-        if isinstance(value, str):
-            stripped = value.strip()
-            if stripped == "":
-                continue
-            try:
-                parsed_float = float(stripped)
-                if parsed_float.is_integer():
-                    normalized[column] = int(parsed_float)
-            except ValueError:
-                continue
-
-    return normalized
-
 
 def clean_cik(cik_value: Any) -> str:
     cik_str = str(cik_value).split(".")[0].strip()
@@ -167,6 +134,8 @@ def build_metadata_row(
 
     output_row["year"] = extract_year_from_filename(str(output_row.get("filename", "")))
     output_row["accessionNumber"] = extract_accession_number_index(str(output_row.get("filename", "")))
+    output_row['cik'] = int(output_row['cik'])
+    output_row['gvkey'] = int(output_row['gvkey'])
 
     submissions_metadata = find_submissions_metadata(
         cik_value=output_row.get("cik", ""),
@@ -176,7 +145,7 @@ def build_metadata_row(
     )
     output_row.update(submissions_metadata)
 
-    return _cast_selected_columns_to_int(output_row)
+    return output_row
 
 
 def create_metadata_dataset(
@@ -248,7 +217,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-year",
         type=int,
-        default=2004,
+        default=2008,
         help="Optional year filter. Set to a negative value to disable filtering.",
     )
     return parser.parse_args()

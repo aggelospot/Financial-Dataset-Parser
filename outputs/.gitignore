@@ -1,0 +1,9 @@
+# .gitignore sample
+# Ignore all files in this dir...
+*
+
+# ... except for:
+!.gitignore
+!*example.json
+!*example.csv
+!/example_outputs
