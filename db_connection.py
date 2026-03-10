@@ -300,6 +300,7 @@ def retrieve_statement_taxonomies_by_accession_number(accession_number, financia
     """
 
     try:
+        print("attempting to execute query : ", query_sql)
         with conn.cursor() as cur:
             cur.execute(query_sql)
             result = cur.fetchall()
@@ -315,6 +316,7 @@ def retrieve_statement_taxonomies_by_accession_number(accession_number, financia
 
 
 def retrieve_statement_taxonomies_by_accession_number2(
+        conn,
         accession_number: str,
         financial_statement,
         num_quarters
@@ -489,128 +491,128 @@ def collect_unique_tags(
 
     return unique_tags, tag_frequencies
 
-conn = create_connection()
+# conn = create_connection()
 pd.options.display.max_colwidth = 1500
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', None)
 
-try:
-
-    # file_path = os.path.join(os.path.join(config.IMPORTS_DIR, "2020q4(1)"), "num.csv")
-    # import_all_num_csv(conn, config.IMPORTS_DIR)
-
-    from tools.data_loader import DataLoader
-    import json
-    data_loader = DataLoader()
-
-    ecl = data_loader.load_dataset(config.ECL_METADATA_NOTEXT_PATH, alias='ecl', lines=True)
-    with open(config.XBRL_MAPPING_PATH, 'r') as file:
-        xbrl_mapping = json.load(file)
-
-    # collect_unique_tags(ecl_df=ecl)
-    # METHOD 1: CREATE A SPARSE DATAFRAME OF THE RAW DATA
-    # output_file = os.path.join(config.OUTPUT_DIR, "ecl_all_statements.jsonl")
-    # append_raw_statement_data_stream(ecl, output_path=output_file)
-
-    # ecl_all = pd.read_json(output_file, lines=True)
-    # print(f"Sparse dataframe shape: {ecl_all.shape}")
-    # print(f"Saved to: {output_file}")
-
-    # METHOD 2: ATTEMPT TO STANDARDIZE THE TAGS
-    tag_list = []
-    for section in ["IncomeStatement", "BalanceSheet", "CashFlow", "StatementOfStockholdersEquity"]:
-        for key, value in xbrl_mapping[section].items():
-            if key not in tag_list:  # Avoid duplicates
-                tag_list.append(key)
-    for tag in tag_list:
-        ecl[tag] = None
-
-    results = []
-    filing_cache = {}  # {accession_number: {tag: value}}
-    for idx, row in ecl.iterrows():
-        print(f"\rCurrent row: {idx}/{len(ecl)}", end='')
-        # if idx > 300: break
-        if row['isXBRL'] == 0:
-            continue  # skip non-XBRL filings
-
-        adsh = row['accessionNumber']
-        filing_cache[adsh] = {}  # start fresh for this filing
-
-
-        # ------------------------------------------------
-        # helper: store (tag → value) for later reuse
-        # ------------------------------------------------
-        def cache_statement(stmt_code, quarter_spec):
-            tags, labels, vals = retrieve_statement_taxonomies_by_accession_number2(
-                adsh, stmt_code, quarter_spec)
-            filing_cache[adsh].update(dict(zip(tags, vals)))
-            return tags, labels  # keep old behaviour where needed
-
-
-        # ---------------- Income Statement ----------------------
-        is_tags, is_labels = cache_statement('IS', [4])
-        matched_is_items = match_concept_in_section(
-            xbrl_mapping['IncomeStatement'],
-            is_tags, is_labels)
-
-        # print(matched_is_items)
-        # print("current cache", filing_cache[adsh])
-
-        #  Balance Sheet
-        bs_tags, bs_labels = cache_statement('BS', 0)
-        matched_bs_items = match_concept_in_section(
-            xbrl_mapping['BalanceSheet'],
-            bs_tags, bs_labels)
-
-        #  Cash-flow
-        cf_tags, cf_labels = cache_statement('CF', [4])
-        matched_cf_items = match_concept_in_section(
-            xbrl_mapping['CashFlow'],
-            cf_tags, cf_labels)
-
-        #  Stockholders' Equity
-        eq_tags, eq_labels = cache_statement('EQ', [0])
-        matched_eq_items = match_concept_in_section(
-            xbrl_mapping['StatementOfStockholdersEquity'],
-            eq_tags, eq_labels)
-
-        # assemble row using cached values
-        metadata_row = {
-            "accession_number": adsh,
-            "isXBRL": 1,
-            **matched_is_items,
-            **matched_bs_items,
-            **matched_cf_items,
-            **matched_eq_items,
-        }
-
-        for concept_name, sec_tag in metadata_row.items():
-            if concept_name in tag_list:  # skip meta fields
-                val = filing_cache[adsh].get(sec_tag)
-                ecl.at[idx, concept_name] = val
-
-        results.append(metadata_row)
-
-    result_df = pd.DataFrame(results)
-    print("Resulting df: \n", result_df.head(1000))
-    print("Resulting ecl df \n", ecl.head(100))
-    data_loader.save_dataset(result_df, os.path.join(config.OUTPUT_DIR, "tags.csv"))
-    data_loader.save_dataset(ecl, os.path.join(config.OUTPUT_DIR, "ecl_with_financial_tags.csv"))
-
-
-
-
-
-
-
-
-    # print("Query results : ", result)
-    # print("Target concepts: \n", target_concepts)
-    # print("End!\n", matched_ic_items)
-
-
-
-finally:
-    # 4. Close the connection regardless of success/failure
-    close_connection(conn)
+# try:
+#
+#     # file_path = os.path.join(os.path.join(config.IMPORTS_DIR, "2020q4(1)"), "num.csv")
+#     # import_all_num_csv(conn, config.IMPORTS_DIR)
+#
+#     from tools.data_loader import DataLoader
+#     import json
+#     data_loader = DataLoader()
+#
+#     ecl = data_loader.load_dataset(config.ECL_METADATA_NOTEXT_PATH, alias='ecl', lines=True)
+#     with open(config.XBRL_MAPPING_PATH, 'r') as file:
+#         xbrl_mapping = json.load(file)
+#
+#     # collect_unique_tags(ecl_df=ecl)
+#     # METHOD 1: CREATE A SPARSE DATAFRAME OF THE RAW DATA
+#     # output_file = os.path.join(config.OUTPUT_DIR, "ecl_all_statements.jsonl")
+#     # append_raw_statement_data_stream(ecl, output_path=output_file)
+#
+#     # ecl_all = pd.read_json(output_file, lines=True)
+#     # print(f"Sparse dataframe shape: {ecl_all.shape}")
+#     # print(f"Saved to: {output_file}")
+#
+#     # METHOD 2: ATTEMPT TO STANDARDIZE THE TAGS
+#     tag_list = []
+#     for section in ["IncomeStatement", "BalanceSheet", "CashFlow", "StatementOfStockholdersEquity"]:
+#         for key, value in xbrl_mapping[section].items():
+#             if key not in tag_list:  # Avoid duplicates
+#                 tag_list.append(key)
+#     for tag in tag_list:
+#         ecl[tag] = None
+#
+#     results = []
+#     filing_cache = {}  # {accession_number: {tag: value}}
+#     for idx, row in ecl.iterrows():
+#         print(f"\rCurrent row: {idx}/{len(ecl)}", end='')
+#         # if idx > 300: break
+#         if row['isXBRL'] == 0:
+#             continue  # skip non-XBRL filings
+#
+#         adsh = row['accessionNumber']
+#         filing_cache[adsh] = {}  # start fresh for this filing
+#
+#
+#         # ------------------------------------------------
+#         # helper: store (tag → value) for later reuse
+#         # ------------------------------------------------
+#         def cache_statement(stmt_code, quarter_spec):
+#             tags, labels, vals = retrieve_statement_taxonomies_by_accession_number2(
+#                 adsh, stmt_code, quarter_spec)
+#             filing_cache[adsh].update(dict(zip(tags, vals)))
+#             return tags, labels  # keep old behaviour where needed
+#
+#
+#         # ---------------- Income Statement ----------------------
+#         is_tags, is_labels = cache_statement('IS', [4])
+#         matched_is_items = match_concept_in_section(
+#             xbrl_mapping['IncomeStatement'],
+#             is_tags, is_labels)
+#
+#         # print(matched_is_items)
+#         # print("current cache", filing_cache[adsh])
+#
+#         #  Balance Sheet
+#         bs_tags, bs_labels = cache_statement('BS', 0)
+#         matched_bs_items = match_concept_in_section(
+#             xbrl_mapping['BalanceSheet'],
+#             bs_tags, bs_labels)
+#
+#         #  Cash-flow
+#         cf_tags, cf_labels = cache_statement('CF', [4])
+#         matched_cf_items = match_concept_in_section(
+#             xbrl_mapping['CashFlow'],
+#             cf_tags, cf_labels)
+#
+#         #  Stockholders' Equity
+#         eq_tags, eq_labels = cache_statement('EQ', [0])
+#         matched_eq_items = match_concept_in_section(
+#             xbrl_mapping['StatementOfStockholdersEquity'],
+#             eq_tags, eq_labels)
+#
+#         # assemble row using cached values
+#         metadata_row = {
+#             "accession_number": adsh,
+#             "isXBRL": 1,
+#             **matched_is_items,
+#             **matched_bs_items,
+#             **matched_cf_items,
+#             **matched_eq_items,
+#         }
+#
+#         for concept_name, sec_tag in metadata_row.items():
+#             if concept_name in tag_list:  # skip meta fields
+#                 val = filing_cache[adsh].get(sec_tag)
+#                 ecl.at[idx, concept_name] = val
+#
+#         results.append(metadata_row)
+#
+#     result_df = pd.DataFrame(results)
+#     print("Resulting df: \n", result_df.head(1000))
+#     print("Resulting ecl df \n", ecl.head(100))
+#     data_loader.save_dataset(result_df, os.path.join(config.OUTPUT_DIR, "tags.csv"))
+#     data_loader.save_dataset(ecl, os.path.join(config.OUTPUT_DIR, "ecl_with_financial_tags.csv"))
+#
+#
+#
+#
+#
+#
+#
+#
+#     # print("Query results : ", result)
+#     # print("Target concepts: \n", target_concepts)
+#     # print("End!\n", matched_ic_items)
+#
+#
+#
+# finally:
+#     # 4. Close the connection regardless of success/failure
+#     close_connection(conn)

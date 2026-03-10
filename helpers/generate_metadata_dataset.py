@@ -28,63 +28,6 @@ import re
 
 
 DEFAULT_TEXT_COLUMNS_TO_DROP = ("opinion_text", "item_7")
-POSTPROCESS_DROP_COLUMNS = (
-    "filename",
-    "can_label",
-    "qualified",
-    "bankruptcy_prediction_split",
-    "bunkruptcy_prediction_split",
-    "bankruptcy_date_1",
-    "bankruptcy_date_2",
-    "bankruptcy_date_3",
-    "cik_year",
-    "cik__year",
-    "gc_list",
-    "reportDateIndex",
-)
-
-
-def _parse_bool(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-
-    normalized = str(value).strip().lower()
-    if normalized in {"true", "1", "yes", "y", "on"}:
-        return True
-    if normalized in {"false", "0", "no", "n", "off"}:
-        return False
-
-    raise argparse.ArgumentTypeError("Expected a boolean value (true/false).")
-
-
-def _drop_postprocess_columns(row: Dict[str, Any]) -> Dict[str, Any]:
-    cleaned_row = dict(row)
-    for column in POSTPROCESS_DROP_COLUMNS:
-        cleaned_row.pop(column, None)
-    return cleaned_row
-
-
-def postprocess_existing_dataset(output_path: str) -> int:
-    """Postprocess an existing generated dataset in-place."""
-    if not os.path.exists(output_path):
-        return 0
-
-    tmp_path = f"{output_path}.tmp"
-    rows_written = 0
-
-    with open(output_path, "r", encoding="utf-8") as source, open(tmp_path, "w", encoding="utf-8") as destination:
-        for line in source:
-            if not line.strip():
-                continue
-
-            row = json.loads(line)
-            row = _drop_postprocess_columns(row)
-            destination.write(json.dumps(row) + "\n")
-            rows_written += 1
-
-    os.replace(tmp_path, output_path)
-    return rows_written
-
 
 def clean_cik(cik_value: Any) -> str:
     cik_str = str(cik_value).split(".")[0].strip()
@@ -212,16 +155,12 @@ def create_metadata_dataset(
     max_rows: Optional[int] = None,
     min_year: Optional[int] = 2000,
     drop_columns: Iterable[str] = DEFAULT_TEXT_COLUMNS_TO_DROP,
-    postprocess: bool = True,
 ) -> int:
     """Create metadata-enriched JSONL dataset.
 
     Returns the number of rows written.
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    if postprocess and os.path.exists(output_path):
-        return postprocess_existing_dataset(output_path)
 
     cik_cache: Dict[str, Tuple[Optional[Dict[str, Any]], Iterable[Dict[str, Any]]]] = {}
     rows_written = 0
@@ -246,9 +185,6 @@ def create_metadata_dataset(
 
             if min_year is not None and metadata_row.get("year") is not None and metadata_row["year"] < min_year:
                 continue
-
-            if postprocess:
-                metadata_row = _drop_postprocess_columns(metadata_row)
 
             destination.write(json.dumps(metadata_row) + "\n")
             rows_written += 1
@@ -284,14 +220,6 @@ def parse_args() -> argparse.Namespace:
         default=2008,
         help="Optional year filter. Set to a negative value to disable filtering.",
     )
-    parser.add_argument(
-        "--postprocess",
-        type=_parse_bool,
-        nargs="?",
-        const=True,
-        default=True,
-        help="Apply metadata postprocessing column drops (default: true). Use --postprocess false for debugging.",
-    )
     return parser.parse_args()
 
 
@@ -305,7 +233,6 @@ def main() -> None:
         submissions_dir=args.submissions_dir,
         max_rows=args.max_rows,
         min_year=min_year,
-        postprocess=args.postprocess,
     )
 
     print(f"Done. Wrote {rows_written:,} rows to {args.output}")
