@@ -109,6 +109,7 @@ def build_sparse_dataset(
 
     with open(input_path, "r", encoding="utf-8") as input_file, open(output_path, "w", encoding="utf-8") as output_file:
         for line_number, line in enumerate(input_file, start=1):
+            print(f"\rCurrent row: {line_number}", end='')
             if max_rows is not None and processed_rows >= max_rows:
                 break
 
@@ -145,8 +146,8 @@ def build_sparse_dataset(
             output_file.write(json.dumps(row) + "\n")
             processed_rows += 1
 
-            if processed_rows % 100 == 0:
-                print(f"Processed {processed_rows:,} rows (last input line: {line_number:,})", flush=True)
+            # if processed_rows % 100 == 0:
+            #     print(f"Processed {processed_rows:,} rows (last input line: {line_number:,})", flush=True)
 
     print(
         f"Done. Wrote {processed_rows:,} rows to {output_path}. "
@@ -155,15 +156,15 @@ def build_sparse_dataset(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate sparse ECL + companyfacts dataset.")
+    parser = argparse.ArgumentParser(description="Generate sparse companyfacts dataset.")
     parser.add_argument(
         "--input",
-        default=config.ECL_FILE_PATH,
-        help="Path to source ECL JSONL file.",
+        default=config.COMPANYFACTS_METADATA_PATH,
+        help="Path to source metadata JSONL file.",
     )
     parser.add_argument(
         "--output",
-        default=os.path.join(config.OUTPUT_DIR, "ecl_companyfacts_sparse.json"),
+        default=os.path.join(config.COMPANYFACTS_SPARSE_PATH),
         help="Path to output sparse JSONL file.",
     )
     parser.add_argument(

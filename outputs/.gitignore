@@ -2,6 +2,8 @@
 # Ignore all files in this dir...
 *
 
-# ... except for this one.
-!./errors
+# ... except for:
 !.gitignore
+!*example.json
+!*example.csv
+!/example_outputs

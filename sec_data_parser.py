@@ -659,6 +659,7 @@ def fetch_calculation_linkbases(df):
 
 def retrieve_sec_tags_and_values(ecl, data_loader):
     conn = db_connection.create_connection()
+    print("created connection")
     try:
         with open(config.XBRL_MAPPING_PATH, 'r') as file:
             xbrl_mapping = json.load(file)
@@ -675,7 +676,6 @@ def retrieve_sec_tags_and_values(ecl, data_loader):
 
         for idx, row in ecl.iterrows():
             print(f"\rCurrent row: {idx}", end='')
-            # if idx > 100: break
             metadata_row = {
                 "accession_number": row['accessionNumber'],
                 "isXBRL": row['isXBRL']
@@ -710,12 +710,13 @@ def retrieve_sec_tags_and_values(ecl, data_loader):
             results.append(metadata_row)
 
         result_df = pd.DataFrame(results)
-        print("Resulting df: \n", result_df.head(1000))
-        print("Resulting ecl df \n", ecl.head(100))
+        # print("Resulting df: \n", result_df.head(1000))
+        # print("Resulting ecl df \n", ecl.head(100))
 
 
         data_loader.save_dataset(result_df, os.path.join(config.OUTPUT_DIR, "tags.csv"))
         data_loader.save_dataset(ecl, os.path.join(config.OUTPUT_DIR, "ecl_with_financial_tags.csv"))
 
     finally:
+        print("attempting to close connection")
         db_connection.close_connection(conn)

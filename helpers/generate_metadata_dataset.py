@@ -29,7 +29,6 @@ import re
 
 DEFAULT_TEXT_COLUMNS_TO_DROP = ("opinion_text", "item_7")
 
-
 def clean_cik(cik_value: Any) -> str:
     cik_str = str(cik_value).split(".")[0].strip()
     return cik_str.zfill(10)
@@ -135,6 +134,8 @@ def build_metadata_row(
 
     output_row["year"] = extract_year_from_filename(str(output_row.get("filename", "")))
     output_row["accessionNumber"] = extract_accession_number_index(str(output_row.get("filename", "")))
+    output_row['cik'] = int(output_row['cik'])
+    output_row['gvkey'] = int(output_row['gvkey'])
 
     submissions_metadata = find_submissions_metadata(
         cik_value=output_row.get("cik", ""),
@@ -152,7 +153,7 @@ def create_metadata_dataset(
     output_path: str,
     submissions_dir: str = config.SEC_SUBMISSIONS_DIR,
     max_rows: Optional[int] = None,
-    min_year: Optional[int] = 2010,
+    min_year: Optional[int] = 2000,
     drop_columns: Iterable[str] = DEFAULT_TEXT_COLUMNS_TO_DROP,
 ) -> int:
     """Create metadata-enriched JSONL dataset.
@@ -165,7 +166,9 @@ def create_metadata_dataset(
     rows_written = 0
 
     with open(input_path, "r", encoding="utf-8") as source, open(output_path, "w", encoding="utf-8") as destination:
+
         for line_number, line in enumerate(source, start=1):
+            print(f"\rCurrent row: {rows_written}", end='')
             if max_rows is not None and rows_written >= max_rows:
                 break
 
@@ -186,8 +189,8 @@ def create_metadata_dataset(
             destination.write(json.dumps(metadata_row) + "\n")
             rows_written += 1
 
-            if rows_written % 100 == 0:
-                print(f"Processed {rows_written:,} rows (source line {line_number:,})", flush=True)
+            # if rows_written % 100 == 0:
+            #     print(f"Processed {rows_written:,} rows (source line {line_number:,})", flush=True)
 
     return rows_written
 
@@ -197,7 +200,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", default=config.ECL_FILE_PATH, help="Path to source ECL JSONL file.")
     parser.add_argument(
         "--output",
-        default=config.ECL_METADATA_NOTEXT_PATH,
+        default=config.COMPANYFACTS_METADATA_PATH,
         help="Path for metadata-enriched JSONL output.",
     )
     parser.add_argument(
@@ -214,7 +217,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-year",
         type=int,
-        default=2010,
+        default=2008,
         help="Optional year filter. Set to a negative value to disable filtering.",
     )
     return parser.parse_args()
