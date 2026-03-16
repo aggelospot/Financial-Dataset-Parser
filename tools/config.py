@@ -21,8 +21,11 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 ECL_FILE_PATH = os.path.join(DATA_DIR, 'ECL_AA_subset.json')                          # ECL dataset
 ECL_FILTERED_PATH = os.path.join(DATA_DIR, 'ECL_filtered_subset.json')                # ECL filtered for year > 2008
 ECL_SUBMISSIONS_METADATA_PATH = os.path.join(OUTPUT_DIR, 'ECL_submissions_metadata.json') # ECL_w_metadata
-ECL_METADATA_PATH = os.path.join(OUTPUT_DIR, 'ECL_metadata.json')
-ECL_METADATA_NOTEXT_PATH = os.path.join(OUTPUT_DIR, 'ECL_metadata_no_text.json')
+ECL_METADATA_PATH = os.path.join(OUTPUT_DIR, 'ecl_metadata.json')
+ECL_METADATA_NOTEXT_PATH = os.path.join(OUTPUT_DIR, 'metadata_no_text.json')
+COMPANYFACTS_METADATA_PATH = os.path.join(OUTPUT_DIR, 'metadata.json')
+COMPANYFACTS_SPARSE_PATH = os.path.join(OUTPUT_DIR, 'companyfacts_sparse.json')
+COMPANYFACTS_DENSE_PATH = os.path.join(OUTPUT_DIR, 'companyfacts_dense.csv')
 RAW_DATASET_FILEPATH = os.path.join(OUTPUT_DIR, 'ecl_companyfacts_raw.json')          # Combined ECL + companyfacts dataset
 ALL_VARS_DATASET_FILEPATH = os.path.join(OUTPUT_DIR, 'ecl_companyfacts.json')                  # ECL + companyfacts (no nulls)
 POST_PROCESSED_DATASET_FILEPATH = os.path.join(OUTPUT_DIR, 'ecl_companyfacts_processed.csv')  # Final processed dataset
@@ -30,4 +33,4 @@ COLUMN_STATS_FILEPATH = os.path.join(OUTPUT_DIR, 'column_statistics.csv')       
 
 
 
-XBRL_MAPPING_PATH = os.path.join('tools', 'xbrl_mapping.json')
+XBRL_MAPPING_PATH = os.path.join(BASE_DIR, 'tools', 'xbrl_mapping.json')
