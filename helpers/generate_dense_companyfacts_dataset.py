@@ -12,6 +12,7 @@ import json
 import os
 import sys
 from typing import List
+from decimal import Decimal
 
 import pandas as pd
 
@@ -48,12 +49,14 @@ def _configured_financial_columns() -> List[str]:
 
 
 def postprocess_dense_csv(output_path: str) -> None:
+    print("postprocessing....")
     """Drop non-required columns and trim float tails in-place."""
     df = pd.read_csv(output_path, low_memory=False)
 
     keep_columns = ["accessionNumber", "label", *_configured_financial_columns()]
     keep_columns = [col for col in keep_columns if col in df.columns]
     df = df[keep_columns]
+
 
     for col in df.columns:
         if col in {"accessionNumber", "label"}:
@@ -62,7 +65,7 @@ def postprocess_dense_csv(output_path: str) -> None:
 
     # This trims trailing zeros after decimal point during CSV writing.
     df.to_csv(output_path, index=False, float_format="%.15g")
-
+    print("postprocessing finished")
 
 def create_dense_dataset(input_path: str, output_path: str, postprocess: bool = True) -> None:
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -146,11 +149,14 @@ def create_dense_dataset(input_path: str, output_path: str, postprocess: bool = 
         result_df = pd.DataFrame(results)
         print("Resulting df: \n", result_df.head(1000))
         print("Resulting ecl df \n", metadata.head(100))
+
         data_loader.save_dataset(result_df, os.path.join(config.OUTPUT_DIR, "tags.csv"))
         data_loader.save_dataset(metadata, output_path)
 
         if postprocess:
             postprocess_dense_csv(output_path)
+
+
 
     finally:
         close_connection(conn)

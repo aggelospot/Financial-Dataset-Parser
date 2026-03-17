@@ -147,7 +147,8 @@ def build_sparse_dataset(
                 for concept_name, fact_obj in all_facts.items():
                     matched_value = match_value_for_year(fact_obj, fiscal_year)
                     if matched_value is not None:
-                        row[concept_name] = matched_value
+                        # row[concept_name] = matched_value
+                        row[concept_name] = pd.to_numeric(matched_value, errors="coerce")
 
             output_file.write(json.dumps(row) + "\n")
             processed_rows += 1
@@ -179,7 +180,7 @@ def postprocess_json_dataset(json_path: str, input_columns: Set[str]) -> None:
 def convert_json_to_csv(json_path: str, csv_path: str) -> None:
     """Convert line-delimited JSON output to CSV."""
     df = pd.read_json(json_path, lines=True)
-    df.to_csv(csv_path, index=False)
+    df.to_csv(csv_path, index=False, float_format="%.15g")
     print(f"Converted JSON to CSV: {csv_path}")
 
 
