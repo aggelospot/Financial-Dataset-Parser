@@ -1,10 +1,11 @@
-"""Generate a sparse ECL + SEC companyfacts dataset."""
+"""Generate a sparse ECL + SEC companyfacts CSV dataset."""
 
 import argparse
+import csv
 import json
 import os
 import sys
-from typing import Any, Dict, Iterable, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, Optional, Set
 
 import pandas as pd
 
@@ -101,87 +102,128 @@ def get_input_columns(input_path: str, drop_columns: Iterable[str]) -> Set[str]:
     return set()
 
 
-def build_sparse_dataset(
-    input_path: str,
-    output_path: str,
-    max_rows: Optional[int],
-    drop_columns: Iterable[str] = DEFAULT_TEXT_COLUMNS_TO_DROP,
-) -> Set[str]:
-    """Stream ECL rows, enrich them with SEC facts, and write sparse JSONL output."""
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+def extract_numeric_facts_for_row(
+    row: Dict[str, Any],
+    sec_cache: Dict[str, Optional[Dict[str, Any]]],
+) -> Dict[str, float]:
+    """Extract SEC numeric concepts for one input row."""
+    fiscal_year = extract_fiscal_year(row)
+    if fiscal_year is None:
+        return {}
 
+    cik_cleaned = clean_cik(row.get("cik", ""))
+    sec_data = load_companyfacts(cik_cleaned, sec_cache)
+    if not sec_data:
+        return {}
+
+    facts = sec_data.get("facts", {})
+    all_facts = {
+        **facts.get("us-gaap", {}),
+        **facts.get("dei", {}),
+    }
+
+    numeric_facts: Dict[str, float] = {}
+    for concept_name, fact_obj in all_facts.items():
+        matched_value = match_value_for_year(fact_obj, fiscal_year)
+        if matched_value is None:
+            continue
+
+        numeric_value = pd.to_numeric(matched_value, errors="coerce")
+        if pd.notna(numeric_value):
+            numeric_facts[concept_name] = float(numeric_value)
+
+    return numeric_facts
+
+
+def determine_output_columns(
+    input_path: str,
+    max_rows: Optional[int],
+    drop_columns: Iterable[str],
+    post_process: bool,
+) -> list[str]:
+    """First pass over input to determine CSV columns without materializing rows."""
+    input_columns = get_input_columns(input_path=input_path, drop_columns=drop_columns)
+    selected_base_columns = [col for col in KEEP_COLUMNS_POSTPROCESS if col in input_columns] if post_process else sorted(input_columns)
+
+    discovered_numeric_columns: Set[str] = set()
     sec_cache: Dict[str, Optional[Dict[str, Any]]] = {}
     processed_rows = 0
-    input_columns = get_input_columns(input_path=input_path, drop_columns=drop_columns)
 
-    with open(input_path, "r", encoding="utf-8") as input_file, open(output_path, "w", encoding="utf-8") as output_file:
+    with open(input_path, "r", encoding="utf-8") as input_file:
         for line_number, line in enumerate(input_file, start=1):
-            print(f"\rCurrent row: {line_number}", end="")
+            print(f"\rDiscovering columns - current row: {line_number}", end="")
             if max_rows is not None and processed_rows >= max_rows:
                 break
-
             if not line.strip():
                 continue
 
             row = json.loads(line)
-
             for column in drop_columns:
                 row.pop(column, None)
 
-            fiscal_year = extract_fiscal_year(row)
-            if fiscal_year is None:
-                output_file.write(json.dumps(row) + "\n")
-                processed_rows += 1
+            numeric_facts = extract_numeric_facts_for_row(row=row, sec_cache=sec_cache)
+            discovered_numeric_columns.update(numeric_facts.keys())
+            processed_rows += 1
+
+    print("")
+    return selected_base_columns + sorted(discovered_numeric_columns)
+
+
+def build_sparse_dataset_csv(
+    input_path: str,
+    output_path: str,
+    max_rows: Optional[int],
+    drop_columns: Iterable[str] = DEFAULT_TEXT_COLUMNS_TO_DROP,
+    post_process: bool = True,
+) -> None:
+    """Two-pass streaming CSV writer for sparse companyfacts without loading full dataset."""
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    output_columns = determine_output_columns(
+        input_path=input_path,
+        max_rows=max_rows,
+        drop_columns=drop_columns,
+        post_process=post_process,
+    )
+
+    sec_cache: Dict[str, Optional[Dict[str, Any]]] = {}
+    processed_rows = 0
+
+    with open(input_path, "r", encoding="utf-8") as input_file, open(output_path, "w", encoding="utf-8", newline="") as output_file:
+        writer = csv.DictWriter(output_file, fieldnames=output_columns)
+        writer.writeheader()
+
+        for line_number, line in enumerate(input_file, start=1):
+            print(f"\rWriting CSV - current row: {line_number}", end="")
+            if max_rows is not None and processed_rows >= max_rows:
+                break
+            if not line.strip():
                 continue
 
-            cik_cleaned = clean_cik(row.get("cik", ""))
-            sec_data = load_companyfacts(cik_cleaned, sec_cache)
+            row = json.loads(line)
+            for column in drop_columns:
+                row.pop(column, None)
 
-            if sec_data:
-                facts = sec_data.get("facts", {})
-                all_facts = {
-                    **facts.get("us-gaap", {}),
-                    **facts.get("dei", {}),
-                }
+            numeric_facts = extract_numeric_facts_for_row(row=row, sec_cache=sec_cache)
 
-                for concept_name, fact_obj in all_facts.items():
-                    matched_value = match_value_for_year(fact_obj, fiscal_year)
-                    if matched_value is not None:
-                        # row[concept_name] = matched_value
-                        row[concept_name] = pd.to_numeric(matched_value, errors="coerce")
+            output_row: Dict[str, Any] = {}
+            if post_process:
+                for col in KEEP_COLUMNS_POSTPROCESS:
+                    if col in output_columns:
+                        output_row[col] = row.get(col)
+            else:
+                for col in output_columns:
+                    if col in row:
+                        output_row[col] = row.get(col)
 
-            output_file.write(json.dumps(row) + "\n")
+            output_row.update({key: format(value, ".15g") for key, value in numeric_facts.items()})
+            writer.writerow(output_row)
             processed_rows += 1
 
     print(
         f"\nDone. Wrote {processed_rows:,} rows to {output_path}. "
         f"Rows limit: {max_rows if max_rows is not None else 'all'}"
     )
-    return input_columns
-
-
-def postprocess_json_dataset(json_path: str, input_columns: Set[str]) -> None:
-    """Keep only numeric added columns + accessionNumber + label in JSONL output."""
-    if not os.path.exists(json_path):
-        raise FileNotFoundError(f"JSON output not found: {json_path}")
-
-    df = pd.read_json(json_path, lines=True)
-    added_columns = [col for col in df.columns if col not in input_columns]
-    numeric_added = [col for col in added_columns if pd.api.types.is_numeric_dtype(df[col])]
-
-    keep_columns = [col for col in KEEP_COLUMNS_POSTPROCESS if col in df.columns] + numeric_added
-    keep_columns = list(dict.fromkeys(keep_columns))
-
-    processed_df = df[keep_columns] if keep_columns else pd.DataFrame()
-    processed_df.to_json(json_path, orient="records", lines=True)
-    print(f"Post-process complete for JSON. Kept columns: {len(keep_columns)}")
-
-
-def convert_json_to_csv(json_path: str, csv_path: str) -> None:
-    """Convert line-delimited JSON output to CSV."""
-    df = pd.read_json(json_path, lines=True)
-    df.to_csv(csv_path, index=False, float_format="%.15g")
-    print(f"Converted JSON to CSV: {csv_path}")
 
 
 def resolve_input_path() -> str:
@@ -193,23 +235,20 @@ def resolve_input_path() -> str:
     return os.path.join(config.DATA_DIR, config.ECL_FILE_PATH)
 
 
-def resolve_output_paths(output_name: str) -> Tuple[str, str]:
-    """Resolve output json/csv paths under OUTPUT_DIR from any user-provided name."""
+def resolve_output_path(output_name: str) -> str:
+    """Resolve output csv path under OUTPUT_DIR from any user-provided name."""
     base_name = os.path.basename(output_name)
     stem, ext = os.path.splitext(base_name)
-    base_stem = stem if ext in (".json", ".csv") else base_name
-
-    json_path = os.path.join(config.OUTPUT_DIR, f"{base_stem}.json")
-    csv_path = os.path.join(config.OUTPUT_DIR, f"{base_stem}.csv")
-    return json_path, csv_path
+    base_stem = stem if ext == ".csv" else base_name
+    return os.path.join(config.OUTPUT_DIR, f"{base_stem}.csv")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate sparse companyfacts dataset.")
+    parser = argparse.ArgumentParser(description="Generate sparse companyfacts CSV dataset.")
     parser.add_argument(
         "--output",
-        default="ecl_companyfacts_sparse.json",
-        help="Output file name (base). Files are written under outputs/.",
+        default="ecl_companyfacts_sparse.csv",
+        help="Output CSV file name. File is written under outputs/.",
     )
     parser.add_argument(
         "--max-rows",
@@ -221,13 +260,7 @@ def parse_args() -> argparse.Namespace:
         "--post-process",
         type=lambda value: str(value).lower() in {"1", "true", "yes", "y"},
         default=True,
-        help="Whether to keep only numeric added columns + accessionNumber + label (default: true).",
-    )
-    parser.add_argument(
-        "--output-file-type",
-        choices=["json", "csv"],
-        default="json",
-        help="Final file type to emit. If csv is selected, JSON is converted to CSV.",
+        help="Whether to keep only numeric SEC columns + accessionNumber + label (default: true).",
     )
     return parser.parse_args()
 
@@ -236,21 +269,11 @@ if __name__ == "__main__":
     args = parse_args()
 
     input_path = resolve_input_path()
-    output_json_path, output_csv_path = resolve_output_paths(args.output)
+    output_csv_path = resolve_output_path(args.output)
 
-    # If JSON already exists, skip generation and only postprocess/convert as requested.
-    if os.path.exists(output_json_path):
-        print(f"Found existing JSON output at {output_json_path}; skipping generation.")
-        input_columns = get_input_columns(input_path=input_path, drop_columns=DEFAULT_TEXT_COLUMNS_TO_DROP)
-    else:
-        input_columns = build_sparse_dataset(
-            input_path=input_path,
-            output_path=output_json_path,
-            max_rows=args.max_rows,
-        )
-
-    if args.post_process:
-        postprocess_json_dataset(json_path=output_json_path, input_columns=input_columns)
-
-    if args.output_file_type == "csv":
-        convert_json_to_csv(json_path=output_json_path, csv_path=output_csv_path)
+    build_sparse_dataset_csv(
+        input_path=input_path,
+        output_path=output_csv_path,
+        max_rows=args.max_rows,
+        post_process=args.post_process,
+    )
