@@ -26,8 +26,9 @@ from tools.data_loader import DataLoader
 data_loader = DataLoader()
 
 DATASET_PATHS: Dict[str, str] = {
-    "dense": config.COMPANYFACTS_DENSE_PATH,
-    "sparse": config.COMPANYFACTS_SPARSE_PATH,
+    "num_dense": config.COMPANYFACTS_DENSE_PATH,
+    "num_sparse": config.COMPANYFACTS_SPARSE_PATH,
+    "text": config.MDA_AUDITOR_PATH,
 }
 
 
