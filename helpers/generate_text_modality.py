@@ -230,7 +230,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output",
-        default=config.MDA_AUDITOR_PATH,
+        default=config.MDA_AUDITOR_DATASET_PATH,
         help="Path to the output CSV file.",
     )
     parser.add_argument(
