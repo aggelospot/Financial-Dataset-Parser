@@ -26,6 +26,7 @@ ECL_METADATA_NOTEXT_PATH = os.path.join(OUTPUT_DIR, 'metadata_no_text.json')
 COMPANYFACTS_METADATA_PATH = os.path.join(OUTPUT_DIR, 'metadata.json')
 COMPANYFACTS_SPARSE_PATH = os.path.join(OUTPUT_DIR, 'companyfacts_sparse.json')
 COMPANYFACTS_DENSE_PATH = os.path.join(OUTPUT_DIR, 'companyfacts_dense.csv')
+MDA_AUDITOR_DATASET_PATH = os.path.join(OUTPUT_DIR, 'mda_auditor_dataset.csv')
 RAW_DATASET_FILEPATH = os.path.join(OUTPUT_DIR, 'ecl_companyfacts_raw.json')          # Combined ECL + companyfacts dataset
 ALL_VARS_DATASET_FILEPATH = os.path.join(OUTPUT_DIR, 'ecl_companyfacts.json')                  # ECL + companyfacts (no nulls)
 POST_PROCESSED_DATASET_FILEPATH = os.path.join(OUTPUT_DIR, 'ecl_companyfacts_processed.csv')  # Final processed dataset
