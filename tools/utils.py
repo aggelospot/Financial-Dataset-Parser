@@ -6,7 +6,6 @@ import logging
 import re
 import os
 import json
-from fuzzywuzzy import fuzz
 from tools import config, data_loader
 
 logging.basicConfig(level=logging.INFO)
@@ -203,7 +202,6 @@ def match_concept_in_section_old(target_concepts, concept_tag_list, concept_desc
     return row
 
 
-from rapidfuzz import fuzz
 def match_concept_in_section_take2(target_concepts, concept_tag_list, concept_desc_list):
     """
     Return {standard_name: matched_iXBRL_tag, …} using RapidFuzz for speed.
@@ -216,6 +214,8 @@ def match_concept_in_section_take2(target_concepts, concept_tag_list, concept_de
     concept_tag_list : list[str]  # tags from the filing (e.g. ['Goodwill', …])
     concept_desc_list : list[str] # optional verbose labels – not used here
     """
+    from rapidfuzz import fuzz
+
     row = {}
 
     for tag in concept_tag_list:
@@ -243,14 +243,14 @@ def match_concept_in_section_take2(target_concepts, concept_tag_list, concept_de
     return row
 
 
-from rapidfuzz import fuzz
-
 def match_concept_in_section(target_concepts, concept_tag_list, concept_desc_list):
     """
     Version that relies on RapidFuzz's built-in Weighted Ratio (WRatio).
     WRatio already down-weights partial matches when the strings differ
     greatly in length, so most “wild” matches disappear.
     """
+    from rapidfuzz import fuzz
+
     row = {}
 
     for tag in concept_tag_list:
@@ -364,9 +364,6 @@ def add_uids_to_df(df):
     df['uid'] = df['cik'].astype(str) + '__' + pd.to_datetime(df['period_of_report']).dt.strftime('%Y-%m-%d')
     data_loader.save_dataset(df, os.path.join(config.OUTPUT_DIR, "ecl_with_financial_tags_uid.csv"))
     return df
-
-
-
 
 
 

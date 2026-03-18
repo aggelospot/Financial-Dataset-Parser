@@ -26,8 +26,9 @@ from tools.data_loader import DataLoader
 data_loader = DataLoader()
 
 DATASET_PATHS: Dict[str, str] = {
-    "dense": config.COMPANYFACTS_DENSE_PATH,
-    "sparse": config.COMPANYFACTS_SPARSE_PATH,
+    "num_dense": config.COMPANYFACTS_DENSE_PATH,
+    "num_sparse": config.COMPANYFACTS_SPARSE_PATH,
+    "text": getattr(config, "MDA_AUDITOR_PATH", getattr(config, "MDA_AUDITOR_DATASET_PATH")),
 }
 
 
@@ -132,6 +133,20 @@ def _resolve_dataset_path(dataset_name: str) -> str:
     )
 
 
+def _set_max_csv_field_size_limit() -> None:
+    """Raise the CSV parser field size limit to support very large text columns."""
+    max_size = sys.maxsize
+
+    while True:
+        try:
+            csv.field_size_limit(max_size)
+            return
+        except OverflowError:
+            max_size //= 10
+            if max_size <= 0:
+                raise
+
+
 
 def _write_updated_csv_dataset(
     dataset_path: str,
@@ -147,6 +162,8 @@ def _write_updated_csv_dataset(
     os.close(temp_fd)
 
     try:
+        _set_max_csv_field_size_limit()
+
         with open(dataset_path, "r", encoding="utf-8", newline="") as dataset_handle, open(
             temp_path, "w", encoding="utf-8", newline=""
         ) as output_handle:
@@ -259,7 +276,7 @@ def add_metadata_columns_to_dataset(
     add_columns: Sequence[str],
     metadata_path: str = config.COMPANYFACTS_METADATA_PATH,
 ) -> int:
-    """Stream requested metadata JSONL columns into the configured dense/sparse dataset."""
+    """Stream requested metadata JSONL columns into the configured dataset."""
     if dataset_name not in DATASET_PATHS:
         raise ValueError(f"Unknown dataset '{dataset_name}'. Expected one of: {sorted(DATASET_PATHS)}")
     if not add_columns:
@@ -315,12 +332,12 @@ def add_metadata_to_original_ecl():
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Add metadata JSONL columns to the configured dense/sparse dataset.")
+    parser = argparse.ArgumentParser(description="Add metadata JSONL columns to the configured dataset.")
     parser.add_argument(
         "--dataset",
         choices=sorted(DATASET_PATHS.keys()),
         required=True,
-        help="Which dataset route to update from config (dense or sparse).",
+        help="Which dataset route to update from config (num_dense, num_sparse, or text).",
     )
     parser.add_argument(
         "--add-columns",
