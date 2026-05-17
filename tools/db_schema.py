@@ -117,7 +117,31 @@ CREATE TABLE tag (
 CREATE INDEX idx_tag_version ON tag(version);
 CREATE INDEX idx_tag_tlabel ON tag(tlabel);
 CREATE INDEX idx_tag_tag ON tag(tag);
+CREATE INDEX IF NOT EXISTS idx_sub_adsh_cik_period
+ON public.sub (adsh, cik, period);
 
+
+CREATE INDEX IF NOT EXISTS idx_num_primary_extraction
+ON public.num (adsh, ddate, qtrs, tag, version)
+INCLUDE (value, uom)
+WHERE segments IS NULL
+  AND coreg IS NULL;
+
+
+CREATE INDEX IF NOT EXISTS idx_pre_statement_join
+ON public.pre (adsh, stmt, tag, version)
+INCLUDE (report, line, plabel);
+
+
+CREATE INDEX IF NOT EXISTS idx_tag_tag_version
+ON public.tag (tag, version)
+INCLUDE (tlabel);
+
+
+ANALYZE public.sub;
+ANALYZE public.num;
+ANALYZE public.pre;
+ANALYZE public.tag;
 
 """
 

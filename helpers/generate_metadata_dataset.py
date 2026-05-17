@@ -23,11 +23,13 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+from db_connection import close_connection, create_connection, retrieve_filing_role_by_accession_and_cik
 from tools import config
 import re
 
 
 DEFAULT_TEXT_COLUMNS_TO_DROP = ("opinion_text", "item_7")
+FILING_ROLE_COLUMN = "filing_role"
 
 def clean_cik(cik_value: Any) -> str:
     cik_str = str(cik_value).split(".")[0].strip()
@@ -37,6 +39,12 @@ def clean_cik(cik_value: Any) -> str:
 def extract_year_from_filename(filename: str) -> Optional[int]:
     match = re.search(r"-(\d{2})-", filename)
     return int("20" + match.group(1)) if match else None
+
+
+def extract_year_from_filing_date(filing_date: Any) -> Optional[int]:
+    filing_date_str = str(filing_date).strip()
+    match = re.match(r"^(\d{4})-\d{2}-\d{2}$", filing_date_str)
+    return int(match.group(1)) if match else None
 
 
 def extract_accession_number_index(filename: str) -> str:
@@ -120,10 +128,35 @@ def find_submissions_metadata(
     }
 
 
+def find_filing_role(
+    conn,
+    accession_number: str,
+    cik_value: Any,
+    filing_role_cache: Dict[Tuple[str, int], str],
+) -> str:
+    """Resolve metadata CIK role in the SEC filing using the local SEC DB."""
+    try:
+        metadata_cik = int(str(cik_value).split(".")[0].strip())
+    except (TypeError, ValueError):
+        return "not_found"
+
+    cache_key = (accession_number, metadata_cik)
+    if cache_key not in filing_role_cache:
+        filing_role_cache[cache_key] = retrieve_filing_role_by_accession_and_cik(
+            connection=conn,
+            accession_number=accession_number,
+            metadata_cik=metadata_cik,
+        )
+
+    return filing_role_cache[cache_key]
+
+
 def build_metadata_row(
     row: Dict[str, Any],
     cik_cache: Dict[str, Tuple[Optional[Dict[str, Any]], Iterable[Dict[str, Any]]]],
+    filing_role_cache: Dict[Tuple[str, int], str],
     submissions_dir: str,
+    conn=None,
     drop_columns: Iterable[str] = DEFAULT_TEXT_COLUMNS_TO_DROP,
 ) -> Dict[str, Any]:
     """Create one enriched metadata row from an ECL source row."""
@@ -132,7 +165,7 @@ def build_metadata_row(
     for column in drop_columns:
         output_row.pop(column, None)
 
-    output_row["year"] = extract_year_from_filename(str(output_row.get("filename", "")))
+    output_row["year"] = extract_year_from_filing_date(output_row.get("filing_date"))
     output_row["accessionNumber"] = extract_accession_number_index(str(output_row.get("filename", "")))
     output_row['cik'] = int(output_row['cik'])
     output_row['gvkey'] = int(output_row['gvkey'])
@@ -144,8 +177,48 @@ def build_metadata_row(
         submissions_dir=submissions_dir,
     )
     output_row.update(submissions_metadata)
+    output_row[FILING_ROLE_COLUMN] = (
+        find_filing_role(
+            conn=conn,
+            accession_number=output_row["accessionNumber"],
+            cik_value=output_row.get("cik"),
+            filing_role_cache=filing_role_cache,
+        )
+        if conn is not None
+        else "not_found"
+    )
 
     return output_row
+
+
+def enrich_existing_metadata_dataset_with_filing_roles(
+    input_path: str,
+    output_path: str,
+    conn,
+) -> int:
+    """Add filing_role to an existing metadata JSONL file."""
+    temp_output_path = f"{output_path}.tmp"
+    rows_written = 0
+    filing_role_cache: Dict[Tuple[str, int], str] = {}
+
+    with open(input_path, "r", encoding="utf-8") as source, open(temp_output_path, "w", encoding="utf-8") as destination:
+        for rows_written, line in enumerate(source, start=1):
+            print(f"\rEnriching existing metadata row: {rows_written}", end="")
+            if not line.strip():
+                continue
+
+            metadata_row = json.loads(line)
+            metadata_row[FILING_ROLE_COLUMN] = find_filing_role(
+                conn=conn,
+                accession_number=str(metadata_row.get("accessionNumber", "")),
+                cik_value=metadata_row.get("cik"),
+                filing_role_cache=filing_role_cache,
+            )
+            destination.write(json.dumps(metadata_row) + "\n")
+
+    os.replace(temp_output_path, output_path)
+    print("")
+    return rows_written
 
 
 def create_metadata_dataset(
@@ -162,35 +235,50 @@ def create_metadata_dataset(
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
+    conn = create_connection()
     cik_cache: Dict[str, Tuple[Optional[Dict[str, Any]], Iterable[Dict[str, Any]]]] = {}
+    filing_role_cache: Dict[Tuple[str, int], str] = {}
     rows_written = 0
 
-    with open(input_path, "r", encoding="utf-8") as source, open(output_path, "w", encoding="utf-8") as destination:
-
-        for line_number, line in enumerate(source, start=1):
-            print(f"\rCurrent row: {rows_written}", end='')
-            if max_rows is not None and rows_written >= max_rows:
-                break
-
-            if not line.strip():
-                continue
-
-            raw_row = json.loads(line)
-            metadata_row = build_metadata_row(
-                row=raw_row,
-                cik_cache=cik_cache,
-                submissions_dir=submissions_dir,
-                drop_columns=drop_columns,
+    try:
+        if os.path.isfile(output_path):
+            print(f"Metadata output already exists at {output_path}. Enriching with {FILING_ROLE_COLUMN}.")
+            return enrich_existing_metadata_dataset_with_filing_roles(
+                input_path=output_path,
+                output_path=output_path,
+                conn=conn,
             )
 
-            if min_year is not None and metadata_row.get("year") is not None and metadata_row["year"] < min_year:
-                continue
+        with open(input_path, "r", encoding="utf-8") as source, open(output_path, "w", encoding="utf-8") as destination:
 
-            destination.write(json.dumps(metadata_row) + "\n")
-            rows_written += 1
+            for line_number, line in enumerate(source, start=1):
+                print(f"\rCurrent row: {rows_written}", end='')
+                if max_rows is not None and rows_written >= max_rows:
+                    break
 
-            # if rows_written % 100 == 0:
-            #     print(f"Processed {rows_written:,} rows (source line {line_number:,})", flush=True)
+                if not line.strip():
+                    continue
+
+                raw_row = json.loads(line)
+                metadata_row = build_metadata_row(
+                    row=raw_row,
+                    cik_cache=cik_cache,
+                    filing_role_cache=filing_role_cache,
+                    submissions_dir=submissions_dir,
+                    conn=conn,
+                    drop_columns=drop_columns,
+                )
+
+                if min_year is not None and metadata_row.get("year") is not None and metadata_row["year"] < min_year:
+                    continue
+
+                destination.write(json.dumps(metadata_row) + "\n")
+                rows_written += 1
+
+                # if rows_written % 100 == 0:
+                #     print(f"Processed {rows_written:,} rows (source line {line_number:,})", flush=True)
+    finally:
+        close_connection(conn)
 
     return rows_written
 

@@ -28,7 +28,7 @@ data_loader = DataLoader()
 DATASET_PATHS: Dict[str, str] = {
     "num_dense": config.COMPANYFACTS_DENSE_PATH,
     "num_sparse": config.COMPANYFACTS_SPARSE_PATH,
-    "text": getattr(config, "MDA_AUDITOR_PATH", getattr(config, "MDA_AUDITOR_DATASET_PATH")),
+    "text": config.MDA_AUDITOR_DATASET_PATH
 }
 
 

@@ -253,6 +253,47 @@ def get_tags_value_by_accession_number(connection, accession_number, tag, num_qu
         return None
 
 
+def retrieve_filing_role_by_accession_and_cik(connection, accession_number, metadata_cik):
+    """Classify whether the metadata CIK is the primary registrant or a co-registrant for a filing."""
+    select_sql = """
+        WITH metadata_row AS (
+            SELECT
+                %s::text AS adsh,
+                %s::bigint AS metadata_cik
+        ),
+        classified AS (
+            SELECT
+                CASE
+                    WHEN sub.cik::bigint = m.metadata_cik
+                        THEN 'primary_registrant'
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM regexp_split_to_table(COALESCE(sub.aciks, ''), '\\s+') AS a(acik)
+                        WHERE NULLIF(a.acik, '') IS NOT NULL
+                          AND a.acik ~ '^\\d+$'
+                          AND a.acik::bigint = m.metadata_cik
+                    )
+                        THEN 'additional_coregistrant'
+                    ELSE 'not_found'
+                END AS filing_role
+            FROM metadata_row AS m
+            JOIN public.sub AS sub
+                ON sub.adsh = m.adsh
+        )
+        SELECT filing_role
+        FROM classified;
+    """
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(select_sql, (accession_number, metadata_cik))
+            result = cursor.fetchone()
+            return result[0] if result else "not_found"
+    except Exception as e:
+        print("Error retrieving filing role:", e)
+        return "not_found"
+
+
 _TRANSLATOR = str.maketrans('', '', string.punctuation)
 def retrieve_statement_taxonomies_by_accession_number(accession_number, financial_statement, num_quarters):
     """
@@ -392,6 +433,107 @@ def retrieve_statement_taxonomies_by_accession_number2(
     except psycopg2.Error as e:
         print("Error executing query on sec_num:", e)
         raise
+
+
+def retrieve_statement_taxonomies_by_accession_number3(
+        conn,
+        accession_number: str,
+        metadata_cik,
+        filing_role: str,
+        financial_statement,
+        num_quarters
+    ):
+    """
+    Role-aware SEC FSDS extractor.
+
+    Returns three parallel lists:
+        tags, labels, values
+
+    SEC numeric values are extracted only for metadata rows whose filing_role is
+    ``primary_registrant``. Additional co-registrants and unresolved roles return
+    empty lists so downstream dense columns remain NULL.
+    """
+
+    if str(filing_role).strip().lower() != "primary_registrant":
+        return [], [], []
+
+    # Statement filter
+    if isinstance(financial_statement, list):
+        if not financial_statement:
+            return [], [], []
+
+        stmt_placeholders = ", ".join(["%s"] * len(financial_statement))
+        where_fin_statement_clause = f"pre.stmt IN ({stmt_placeholders})"
+        stmt_params = tuple(financial_statement)
+    else:
+        where_fin_statement_clause = "pre.stmt = %s"
+        stmt_params = (financial_statement,)
+
+    # Quarter filter
+    if isinstance(num_quarters, list):
+        if not num_quarters:
+            return [], [], []
+
+        qtrs_placeholders = ", ".join(["%s"] * len(num_quarters))
+        where_qtrs_clause = f"num.qtrs IN ({qtrs_placeholders})"
+        qtrs_params = tuple(num_quarters)
+    else:
+        where_qtrs_clause = "num.qtrs = %s"
+        qtrs_params = (num_quarters,)
+
+    query_sql = f"""
+        WITH target_sub AS MATERIALIZED (
+            SELECT
+                sub.adsh,
+                sub.cik,
+                sub.period
+            FROM public.sub AS sub
+            WHERE sub.adsh = %s
+              AND sub.cik = %s
+        )
+        SELECT
+            num.tag,
+            tag.tlabel,
+            num.value
+        FROM target_sub AS sub
+        JOIN public.num AS num
+            ON num.adsh = sub.adsh
+           AND num.ddate = sub.period
+        JOIN public.pre AS pre
+            ON pre.adsh = num.adsh
+           AND pre.tag = num.tag
+           AND pre.version = num.version
+        JOIN public.tag AS tag
+            ON tag.tag = num.tag
+           AND tag.version = num.version
+        WHERE {where_fin_statement_clause}
+          AND {where_qtrs_clause}
+          AND num.segments IS NULL
+          AND num.coreg IS NULL
+        ORDER BY pre.report, pre.line, num.tag;
+    """
+
+    params = (
+        accession_number,
+        metadata_cik,
+        *stmt_params,
+        *qtrs_params,
+    )
+
+    with conn.cursor() as cur:
+        cur.execute(query_sql, params)
+        rows = cur.fetchall()
+
+    tags, labels, values = [], [], []
+    for tag, label, raw_val in rows:
+        val = raw_val
+        val = float(f"{val:.6f}".rstrip("0").rstrip(".")) if isinstance(val, float) else val
+
+        tags.append(tag)
+        labels.append(label)
+        values.append(val)
+
+    return tags, labels, values
 
 
 from decimal import Decimal

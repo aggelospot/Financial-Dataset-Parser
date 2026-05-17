@@ -26,7 +26,7 @@ from tools.data_loader import DataLoader
 DATASET_PATHS: Dict[str, str] = {
     "sparse": config.COMPANYFACTS_SPARSE_PATH,
     "dense": config.COMPANYFACTS_DENSE_PATH,
-    "metadata": config.ECL_METADATA_PATH,
+    "metadata": config.COMPANYFACTS_METADATA_PATH,
 }
 
 

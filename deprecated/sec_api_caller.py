@@ -4,6 +4,7 @@ import time
 import logging
 import os
 import pandas as pd
+from tools import config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -112,6 +113,7 @@ def process_ecl_file(file_path, num_rows=2):
 
 def main():
     # Set the path to your ECL dataset file
+    file = config
     file_path = './data/ECL_AA_subset.json'
 
     # Process the ECL file and get updated rows
