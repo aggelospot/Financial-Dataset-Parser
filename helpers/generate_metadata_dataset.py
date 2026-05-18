@@ -1,21 +1,23 @@
-"""Build an ECL metadata dataset enriched with SEC submissions fields.
+"""Build an ECL metadata dataset enriched with SEC submissions and filing-role fields.
 
-This helper is designed to be:
-1) executable as a standalone script, and
-2) importable so other dataset builders (dense/sparse) can reuse its functions.
+This helper is designed to be executable as a standalone script and importable
+by other dataset builders.
 
 Enriched metadata columns include:
-- accessionNumber
+- accession_number
+- cik_adsh
 - reportDateIndex
 - form
 - primaryDocument
 - isXBRL
+- filing_role
 """
 
 import argparse
 import glob
 import json
 import os
+import re
 import sys
 from typing import Any, Dict, Iterable, Optional, Tuple
 
@@ -25,25 +27,20 @@ if PROJECT_ROOT not in sys.path:
 
 from db_connection import close_connection, create_connection, retrieve_filing_role_by_accession_and_cik
 from tools import config
-import re
 
 
 DEFAULT_TEXT_COLUMNS_TO_DROP = ("opinion_text", "item_7")
+ACCESSION_NUMBER_COLUMN = "accession_number"
+CIK_ADSH_COLUMN = "cik_adsh"
 FILING_ROLE_COLUMN = "filing_role"
 
+
 def clean_cik(cik_value: Any) -> str:
-    cik_str = str(cik_value).split(".")[0].strip()
-    return cik_str.zfill(10)
-
-
-def extract_year_from_filename(filename: str) -> Optional[int]:
-    match = re.search(r"-(\d{2})-", filename)
-    return int("20" + match.group(1)) if match else None
+    return str(cik_value).split(".")[0].strip().zfill(10)
 
 
 def extract_year_from_filing_date(filing_date: Any) -> Optional[int]:
-    filing_date_str = str(filing_date).strip()
-    match = re.match(r"^(\d{4})-\d{2}-\d{2}$", filing_date_str)
+    match = re.match(r"^(\d{4})-\d{2}-\d{2}$", str(filing_date).strip())
     return int(match.group(1)) if match else None
 
 
@@ -51,47 +48,43 @@ def extract_accession_number_index(filename: str) -> str:
     return filename[-25:-5]
 
 
-
-def _load_json_if_exists(file_path: str) -> Optional[Dict[str, Any]]:
+def load_json(file_path: str) -> Optional[Dict[str, Any]]:
     if not os.path.isfile(file_path):
         return None
 
-    try:
-        with open(file_path, "r", encoding="utf-8") as handle:
-            return json.load(handle)
-    except json.JSONDecodeError:
-        return None
+    with open(file_path, "r", encoding="utf-8") as handle:
+        return json.load(handle)
 
 
-def load_submissions_for_cik(cik_str: str, submissions_dir: str) -> Tuple[Optional[Dict[str, Any]], Iterable[Dict[str, Any]]]:
-    """Load SEC submissions JSON files for a CIK (main + split files)."""
-    main_file = os.path.join(submissions_dir, f"CIK{cik_str}.json")
-    main_data = _load_json_if_exists(main_file)
-
-    split_pattern = os.path.join(submissions_dir, f"CIK{cik_str}-submissions-*")
-    split_data = []
-    for split_file in glob.glob(split_pattern):
-        split_json = _load_json_if_exists(split_file)
-        if split_json is not None:
-            split_data.append(split_json)
-
+def load_submissions_for_cik(
+    cik_str: str,
+    submissions_dir: str,
+) -> Tuple[Optional[Dict[str, Any]], Iterable[Dict[str, Any]]]:
+    main_data = load_json(os.path.join(submissions_dir, f"CIK{cik_str}.json"))
+    split_data = [
+        split_json
+        for split_file in glob.glob(os.path.join(submissions_dir, f"CIK{cik_str}-submissions-*"))
+        if (split_json := load_json(split_file)) is not None
+    ]
     return main_data, split_data
 
 
-def _match_accession(metadata_source: Dict[str, Any], accession_number: str) -> Optional[Dict[str, Any]]:
-    accession_numbers = metadata_source.get("accessionNumber", [])
-    for report_index, existing_acc in enumerate(accession_numbers):
-        if existing_acc == accession_number:
-            forms = metadata_source.get("form", [])
-            docs = metadata_source.get("primaryDocument", [])
-            is_xbrl = metadata_source.get("isXBRL", [])
+def match_accession(metadata_source: Dict[str, Any], accession_number: str) -> Optional[Dict[str, Any]]:
+    for report_index, existing_acc in enumerate(metadata_source.get("accessionNumber", [])):
+        if existing_acc != accession_number:
+            continue
 
-            return {
-                "form": forms[report_index] if report_index < len(forms) else None,
-                "primaryDocument": docs[report_index] if report_index < len(docs) else None,
-                "isXBRL": is_xbrl[report_index] if report_index < len(is_xbrl) else None,
-                "reportDateIndex": report_index,
-            }
+        forms = metadata_source.get("form", [])
+        docs = metadata_source.get("primaryDocument", [])
+        is_xbrl = metadata_source.get("isXBRL", [])
+
+        return {
+            "form": forms[report_index] if report_index < len(forms) else None,
+            "primaryDocument": docs[report_index] if report_index < len(docs) else None,
+            "isXBRL": is_xbrl[report_index] if report_index < len(is_xbrl) else None,
+            "reportDateIndex": report_index,
+        }
+
     return None
 
 
@@ -101,23 +94,19 @@ def find_submissions_metadata(
     cik_cache: Dict[str, Tuple[Optional[Dict[str, Any]], Iterable[Dict[str, Any]]]],
     submissions_dir: str,
 ) -> Dict[str, Any]:
-    """Resolve submissions metadata for a single (cik, accessionNumber) pair."""
     cik_str = clean_cik(cik_value)
-
     if cik_str not in cik_cache:
         cik_cache[cik_str] = load_submissions_for_cik(cik_str, submissions_dir)
 
     main_data, split_data = cik_cache[cik_str]
-
     if main_data is not None:
-        recent = main_data.get("filings", {}).get("recent", {})
-        match = _match_accession(recent, accession_number)
-        if match:
+        match = match_accession(main_data.get("filings", {}).get("recent", {}), accession_number)
+        if match is not None:
             return match
 
     for split in split_data:
-        match = _match_accession(split, accession_number)
-        if match:
+        match = match_accession(split, accession_number)
+        if match is not None:
             return match
 
     return {
@@ -134,13 +123,9 @@ def find_filing_role(
     cik_value: Any,
     filing_role_cache: Dict[Tuple[str, int], str],
 ) -> str:
-    """Resolve metadata CIK role in the SEC filing using the local SEC DB."""
-    try:
-        metadata_cik = int(str(cik_value).split(".")[0].strip())
-    except (TypeError, ValueError):
-        return "not_found"
-
+    metadata_cik = int(str(cik_value).split(".")[0].strip())
     cache_key = (accession_number, metadata_cik)
+
     if cache_key not in filing_role_cache:
         filing_role_cache[cache_key] = retrieve_filing_role_by_accession_and_cik(
             connection=conn,
@@ -151,74 +136,53 @@ def find_filing_role(
     return filing_role_cache[cache_key]
 
 
-def build_metadata_row(
+def build_cik_adsh(cik_value: Any, accession_number: Any) -> str:
+    cik_part = str(cik_value).split(".")[0].strip()
+    accession_part = str(accession_number).strip()
+    return f"{cik_part}_{accession_part}"
+
+
+def enrich_metadata_row(
     row: Dict[str, Any],
     cik_cache: Dict[str, Tuple[Optional[Dict[str, Any]], Iterable[Dict[str, Any]]]],
     filing_role_cache: Dict[Tuple[str, int], str],
     submissions_dir: str,
-    conn=None,
+    conn,
     drop_columns: Iterable[str] = DEFAULT_TEXT_COLUMNS_TO_DROP,
 ) -> Dict[str, Any]:
-    """Create one enriched metadata row from an ECL source row."""
-    output_row = dict(row)
+    metadata_row = dict(row)
 
     for column in drop_columns:
-        output_row.pop(column, None)
+        metadata_row.pop(column, None)
 
-    output_row["year"] = extract_year_from_filing_date(output_row.get("filing_date"))
-    output_row["accessionNumber"] = extract_accession_number_index(str(output_row.get("filename", "")))
-    output_row['cik'] = int(output_row['cik'])
-    output_row['gvkey'] = int(output_row['gvkey'])
+    metadata_row.pop("accessionNumber", None)
+    metadata_row["year"] = extract_year_from_filing_date(metadata_row.get("filing_date"))
+    metadata_row["cik"] = int(metadata_row["cik"])
+    metadata_row["gvkey"] = int(metadata_row["gvkey"])
 
-    submissions_metadata = find_submissions_metadata(
-        cik_value=output_row.get("cik", ""),
-        accession_number=output_row["accessionNumber"],
-        cik_cache=cik_cache,
-        submissions_dir=submissions_dir,
+    accession_number = extract_accession_number_index(str(metadata_row.get("filename", "")))
+    metadata_row[ACCESSION_NUMBER_COLUMN] = accession_number
+    metadata_row[CIK_ADSH_COLUMN] = build_cik_adsh(
+        cik_value=metadata_row["cik"],
+        accession_number=accession_number,
     )
-    output_row.update(submissions_metadata)
-    output_row[FILING_ROLE_COLUMN] = (
-        find_filing_role(
-            conn=conn,
-            accession_number=output_row["accessionNumber"],
-            cik_value=output_row.get("cik"),
-            filing_role_cache=filing_role_cache,
+
+    metadata_row.update(
+        find_submissions_metadata(
+            cik_value=metadata_row["cik"],
+            accession_number=accession_number,
+            cik_cache=cik_cache,
+            submissions_dir=submissions_dir,
         )
-        if conn is not None
-        else "not_found"
+    )
+    metadata_row[FILING_ROLE_COLUMN] = find_filing_role(
+        conn=conn,
+        accession_number=accession_number,
+        cik_value=metadata_row["cik"],
+        filing_role_cache=filing_role_cache,
     )
 
-    return output_row
-
-
-def enrich_existing_metadata_dataset_with_filing_roles(
-    input_path: str,
-    output_path: str,
-    conn,
-) -> int:
-    """Add filing_role to an existing metadata JSONL file."""
-    temp_output_path = f"{output_path}.tmp"
-    rows_written = 0
-    filing_role_cache: Dict[Tuple[str, int], str] = {}
-
-    with open(input_path, "r", encoding="utf-8") as source, open(temp_output_path, "w", encoding="utf-8") as destination:
-        for rows_written, line in enumerate(source, start=1):
-            print(f"\rEnriching existing metadata row: {rows_written}", end="")
-            if not line.strip():
-                continue
-
-            metadata_row = json.loads(line)
-            metadata_row[FILING_ROLE_COLUMN] = find_filing_role(
-                conn=conn,
-                accession_number=str(metadata_row.get("accessionNumber", "")),
-                cik_value=metadata_row.get("cik"),
-                filing_role_cache=filing_role_cache,
-            )
-            destination.write(json.dumps(metadata_row) + "\n")
-
-    os.replace(temp_output_path, output_path)
-    print("")
-    return rows_written
+    return metadata_row
 
 
 def create_metadata_dataset(
@@ -229,39 +193,25 @@ def create_metadata_dataset(
     min_year: Optional[int] = 2000,
     drop_columns: Iterable[str] = DEFAULT_TEXT_COLUMNS_TO_DROP,
 ) -> int:
-    """Create metadata-enriched JSONL dataset.
-
-    Returns the number of rows written.
-    """
+    """Create metadata-enriched JSONL dataset from scratch."""
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    conn = create_connection()
     cik_cache: Dict[str, Tuple[Optional[Dict[str, Any]], Iterable[Dict[str, Any]]]] = {}
     filing_role_cache: Dict[Tuple[str, int], str] = {}
     rows_written = 0
+    conn = create_connection()
 
     try:
-        if os.path.isfile(output_path):
-            print(f"Metadata output already exists at {output_path}. Enriching with {FILING_ROLE_COLUMN}.")
-            return enrich_existing_metadata_dataset_with_filing_roles(
-                input_path=output_path,
-                output_path=output_path,
-                conn=conn,
-            )
-
         with open(input_path, "r", encoding="utf-8") as source, open(output_path, "w", encoding="utf-8") as destination:
-
             for line_number, line in enumerate(source, start=1):
-                print(f"\rCurrent row: {rows_written}", end='')
                 if max_rows is not None and rows_written >= max_rows:
                     break
 
                 if not line.strip():
                     continue
 
-                raw_row = json.loads(line)
-                metadata_row = build_metadata_row(
-                    row=raw_row,
+                metadata_row = enrich_metadata_row(
+                    row=json.loads(line),
                     cik_cache=cik_cache,
                     filing_role_cache=filing_role_cache,
                     submissions_dir=submissions_dir,
@@ -274,17 +224,16 @@ def create_metadata_dataset(
 
                 destination.write(json.dumps(metadata_row) + "\n")
                 rows_written += 1
-
-                # if rows_written % 100 == 0:
-                #     print(f"Processed {rows_written:,} rows (source line {line_number:,})", flush=True)
+                print(f"\rRows written: {rows_written:,} | source line: {line_number:,}", end="")
     finally:
         close_connection(conn)
 
+    print("")
     return rows_written
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create initial ECL metadata dataset from submissions files.")
+    parser = argparse.ArgumentParser(description="Create ECL metadata dataset from scratch.")
     parser.add_argument("--input", default=config.ECL_FILE_PATH, help="Path to source ECL JSONL file.")
     parser.add_argument(
         "--output",
@@ -300,7 +249,7 @@ def parse_args() -> argparse.Namespace:
         "--max-rows",
         type=int,
         default=None,
-        help="Optional debug limit: stop and save after X output rows.",
+        help="Optional debug limit: stop after X output rows.",
     )
     parser.add_argument(
         "--min-year",

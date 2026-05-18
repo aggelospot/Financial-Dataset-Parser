@@ -108,11 +108,23 @@ def _next_metadata_row(metadata_iter: Iterator[Dict[str, object]], metadata_path
 
 
 
+def _normalize_column_names(columns: Sequence[str]) -> List[str]:
+    return list(dict.fromkeys(column.strip() for column in columns if column.strip()))
+
+
 def _ensure_metadata_columns_exist(sample_row: Dict[str, object], add_columns: Sequence[str], metadata_path: str) -> None:
     missing_columns = [column for column in add_columns if column not in sample_row]
     if missing_columns:
         raise ValueError(
             f"Metadata file {metadata_path} does not contain the requested column(s): {missing_columns}"
+        )
+
+
+def _ensure_dataset_columns_exist(dataset_columns: Sequence[str], remove_columns: Sequence[str], dataset_path: str) -> None:
+    missing_columns = [column for column in remove_columns if column not in dataset_columns]
+    if missing_columns:
+        raise ValueError(
+            f"Dataset {dataset_path} does not contain the requested column(s): {missing_columns}"
         )
 
 
@@ -152,11 +164,15 @@ def _write_updated_csv_dataset(
     dataset_path: str,
     metadata_path: str,
     add_columns: Sequence[str],
+    remove_columns: Sequence[str],
 ) -> int:
     row_count = 0
-    metadata_iter = _iter_jsonl_rows(metadata_path)
-    first_metadata_row = _next_metadata_row(metadata_iter, metadata_path=metadata_path, row_number=1)
-    _ensure_metadata_columns_exist(first_metadata_row, add_columns=add_columns, metadata_path=metadata_path)
+    metadata_iter: Optional[Iterator[Dict[str, object]]] = None
+    first_metadata_row: Optional[Dict[str, object]] = None
+    if add_columns:
+        metadata_iter = _iter_jsonl_rows(metadata_path)
+        first_metadata_row = _next_metadata_row(metadata_iter, metadata_path=metadata_path, row_number=1)
+        _ensure_metadata_columns_exist(first_metadata_row, add_columns=add_columns, metadata_path=metadata_path)
 
     temp_fd, temp_path = tempfile.mkstemp(prefix="df_combiner_", suffix=".csv", dir=os.path.dirname(dataset_path) or ".")
     os.close(temp_fd)
@@ -171,7 +187,8 @@ def _write_updated_csv_dataset(
             if reader.fieldnames is None:
                 raise ValueError(f"Dataset {dataset_path} does not contain a CSV header.")
 
-            output_columns = list(reader.fieldnames)
+            _ensure_dataset_columns_exist(reader.fieldnames, remove_columns=remove_columns, dataset_path=dataset_path)
+            output_columns = [column for column in reader.fieldnames if column not in remove_columns]
             for column in add_columns:
                 if column not in output_columns:
                     output_columns.append(column)
@@ -181,27 +198,35 @@ def _write_updated_csv_dataset(
 
             pending_metadata_row: Optional[Dict[str, object]] = first_metadata_row
             for row_count, dataset_row in enumerate(reader, start=1):
-                metadata_row = pending_metadata_row or _next_metadata_row(
-                    metadata_iter,
-                    metadata_path=metadata_path,
-                    row_number=row_count,
-                )
-                pending_metadata_row = None
+                for column in remove_columns:
+                    dataset_row.pop(column, None)
 
-                for column in add_columns:
-                    dataset_row[column] = metadata_row.get(column)
+                if add_columns:
+                    if pending_metadata_row is not None:
+                        metadata_row = pending_metadata_row
+                        pending_metadata_row = None
+                    else:
+                        metadata_row = _next_metadata_row(
+                            metadata_iter,
+                            metadata_path=metadata_path,
+                            row_number=row_count,
+                        )
+
+                    for column in add_columns:
+                        dataset_row[column] = metadata_row.get(column)
                 writer.writerow(dataset_row)
                 print(f"\rWriting updated CSV row: {row_count}", end="")
 
-            try:
-                next(metadata_iter)
-            except StopIteration:
-                pass
-            else:
-                print("")
-                raise ValueError(
-                    f"Metadata file {metadata_path} contains more rows than dataset {dataset_path}."
-                )
+            if add_columns:
+                try:
+                    next(metadata_iter)
+                except StopIteration:
+                    pass
+                else:
+                    print("")
+                    raise ValueError(
+                        f"Metadata file {metadata_path} contains more rows than dataset {dataset_path}."
+                    )
 
         os.replace(temp_path, dataset_path)
         print("")
@@ -217,11 +242,15 @@ def _write_updated_jsonl_dataset(
     dataset_path: str,
     metadata_path: str,
     add_columns: Sequence[str],
+    remove_columns: Sequence[str],
 ) -> int:
     row_count = 0
-    metadata_iter = _iter_jsonl_rows(metadata_path)
-    first_metadata_row = _next_metadata_row(metadata_iter, metadata_path=metadata_path, row_number=1)
-    _ensure_metadata_columns_exist(first_metadata_row, add_columns=add_columns, metadata_path=metadata_path)
+    metadata_iter: Optional[Iterator[Dict[str, object]]] = None
+    first_metadata_row: Optional[Dict[str, object]] = None
+    if add_columns:
+        metadata_iter = _iter_jsonl_rows(metadata_path)
+        first_metadata_row = _next_metadata_row(metadata_iter, metadata_path=metadata_path, row_number=1)
+        _ensure_metadata_columns_exist(first_metadata_row, add_columns=add_columns, metadata_path=metadata_path)
 
     temp_fd, temp_path = tempfile.mkstemp(prefix="df_combiner_", suffix=".json", dir=os.path.dirname(dataset_path) or ".")
     os.close(temp_fd)
@@ -239,27 +268,42 @@ def _write_updated_jsonl_dataset(
                     raise ValueError(f"Invalid JSON on line {row_number} of {dataset_path}: {exc}") from exc
 
                 row_count += 1
-                metadata_row = pending_metadata_row or _next_metadata_row(
-                    metadata_iter,
-                    metadata_path=metadata_path,
-                    row_number=row_count,
-                )
-                pending_metadata_row = None
+                if row_count == 1:
+                    _ensure_dataset_columns_exist(
+                        list(dataset_row.keys()),
+                        remove_columns=remove_columns,
+                        dataset_path=dataset_path,
+                    )
 
-                for column in add_columns:
-                    dataset_row[column] = metadata_row.get(column)
+                for column in remove_columns:
+                    dataset_row.pop(column, None)
+
+                if add_columns:
+                    if pending_metadata_row is not None:
+                        metadata_row = pending_metadata_row
+                        pending_metadata_row = None
+                    else:
+                        metadata_row = _next_metadata_row(
+                            metadata_iter,
+                            metadata_path=metadata_path,
+                            row_number=row_count,
+                        )
+
+                    for column in add_columns:
+                        dataset_row[column] = metadata_row.get(column)
                 output_handle.write(json.dumps(dataset_row) + "\n")
                 print(f"\rWriting updated JSONL row: {row_count}", end="")
 
-            try:
-                next(metadata_iter)
-            except StopIteration:
-                pass
-            else:
-                print("")
-                raise ValueError(
-                    f"Metadata file {metadata_path} contains more rows than dataset {dataset_path}."
-                )
+            if add_columns:
+                try:
+                    next(metadata_iter)
+                except StopIteration:
+                    pass
+                else:
+                    print("")
+                    raise ValueError(
+                        f"Metadata file {metadata_path} contains more rows than dataset {dataset_path}."
+                    )
 
         os.replace(temp_path, dataset_path)
         print("")
@@ -271,41 +315,75 @@ def _write_updated_jsonl_dataset(
 
 
 
-def add_metadata_columns_to_dataset(
+def update_dataset_columns(
     dataset_name: str,
-    add_columns: Sequence[str],
+    add_columns: Sequence[str] = (),
+    remove_columns: Sequence[str] = (),
     metadata_path: str = config.COMPANYFACTS_METADATA_PATH,
 ) -> int:
-    """Stream requested metadata JSONL columns into the configured dataset."""
+    """Stream requested column additions/removals into the configured dataset."""
     if dataset_name not in DATASET_PATHS:
         raise ValueError(f"Unknown dataset '{dataset_name}'. Expected one of: {sorted(DATASET_PATHS)}")
-    if not add_columns:
-        raise ValueError("At least one metadata column must be provided.")
-    if not os.path.exists(metadata_path):
+    unique_add_columns = _normalize_column_names(add_columns)
+    unique_remove_columns = _normalize_column_names(remove_columns)
+    if not unique_add_columns and not unique_remove_columns:
+        raise ValueError("At least one column must be provided to add or remove.")
+
+    overlapping_columns = [column for column in unique_add_columns if column in unique_remove_columns]
+    if overlapping_columns:
+        raise ValueError(f"Columns cannot be both added and removed in the same run: {overlapping_columns}")
+
+    if unique_add_columns and not os.path.exists(metadata_path):
         raise FileNotFoundError(f"Metadata file does not exist: {metadata_path}")
 
     dataset_path = _resolve_dataset_path(dataset_name)
     _, extension = os.path.splitext(dataset_path)
     extension = extension.lower()
 
-    unique_columns = list(dict.fromkeys(column.strip() for column in add_columns if column.strip()))
-    if not unique_columns:
-        raise ValueError("No valid metadata columns were provided.")
-
     if extension == ".csv":
         return _write_updated_csv_dataset(
             dataset_path=dataset_path,
             metadata_path=metadata_path,
-            add_columns=unique_columns,
+            add_columns=unique_add_columns,
+            remove_columns=unique_remove_columns,
         )
     if extension == ".json":
         return _write_updated_jsonl_dataset(
             dataset_path=dataset_path,
             metadata_path=metadata_path,
-            add_columns=unique_columns,
+            add_columns=unique_add_columns,
+            remove_columns=unique_remove_columns,
         )
 
     raise ValueError(f"Unsupported dataset extension for {dataset_path}: {extension}")
+
+
+def add_metadata_columns_to_dataset(
+    dataset_name: str,
+    add_columns: Sequence[str],
+    metadata_path: str = config.COMPANYFACTS_METADATA_PATH,
+) -> int:
+    """Stream requested metadata JSONL columns into the configured dataset."""
+    if not add_columns:
+        raise ValueError("At least one metadata column must be provided.")
+    return update_dataset_columns(
+        dataset_name=dataset_name,
+        add_columns=add_columns,
+        metadata_path=metadata_path,
+    )
+
+
+def remove_columns_from_dataset(
+    dataset_name: str,
+    remove_columns: Sequence[str],
+) -> int:
+    """Stream requested column removals into the configured dataset."""
+    if not remove_columns:
+        raise ValueError("At least one column must be provided to remove.")
+    return update_dataset_columns(
+        dataset_name=dataset_name,
+        remove_columns=remove_columns,
+    )
 
 
 
@@ -332,7 +410,7 @@ def add_metadata_to_original_ecl():
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Add metadata JSONL columns to the configured dataset.")
+    parser = argparse.ArgumentParser(description="Add metadata JSONL columns to, or remove columns from, the configured dataset.")
     parser.add_argument(
         "--dataset",
         choices=sorted(DATASET_PATHS.keys()),
@@ -341,24 +419,35 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--add-columns",
-        required=True,
         help="Comma-separated metadata column names to append to the selected dataset.",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--remove-columns",
+        help="Comma-separated column names to remove from the selected dataset.",
+    )
+    args = parser.parse_args()
+    if not args.add_columns and not args.remove_columns:
+        parser.error("Provide --add-columns and/or --remove-columns.")
+    return args
 
 
 
 def main() -> None:
     args = parse_args()
-    row_count = add_metadata_columns_to_dataset(
+    add_columns = _normalize_column_names(args.add_columns.split(",")) if args.add_columns else []
+    remove_columns = _normalize_column_names(args.remove_columns.split(",")) if args.remove_columns else []
+    row_count = update_dataset_columns(
         dataset_name=args.dataset,
-        add_columns=args.add_columns.split(","),
+        add_columns=add_columns,
+        remove_columns=remove_columns,
     )
     dataset_path = _resolve_dataset_path(args.dataset)
-    print(
-        f"Done. Added columns {args.add_columns} to {args.dataset} dataset at {dataset_path}. "
-        f"Rows updated: {row_count:,}"
-    )
+    actions = []
+    if add_columns:
+        actions.append(f"added columns {', '.join(add_columns)}")
+    if remove_columns:
+        actions.append(f"removed columns {', '.join(remove_columns)}")
+    print(f"Done. {' and '.join(actions).capitalize()} for {args.dataset} dataset at {dataset_path}. Rows updated: {row_count:,}")
 
 
 
