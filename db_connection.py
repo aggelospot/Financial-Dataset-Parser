@@ -273,7 +273,7 @@ def retrieve_filing_role_by_accession_and_cik(connection, accession_number, meta
                           AND a.acik ~ '^\\d+$'
                           AND a.acik::bigint = m.metadata_cik
                     )
-                        THEN 'additional_coregistrant'
+                        THEN 'coregistrant'
                     ELSE 'not_found'
                 END AS filing_role
             FROM metadata_row AS m

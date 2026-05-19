@@ -1,50 +1,51 @@
-# Sparse dataset generation pipeline (historical SEC companyfacts approach)
+# Sparse companyfacts matching process
 
-This note summarizes the original approach used in this project before the move to the local PostgreSQL SEC dataset.
+This note documents how the sparse companyfacts dataset matches SEC fact values
+to ECL metadata rows.
 
-## 1) Start from ECL records
-- The pipeline starts from `ECL_AA_subset.json`.
-- Each row is keyed by company-level metadata such as CIK / filing context.
+## Input rows
 
-## 2) Join ECL rows with local SEC companyfacts JSON files
-- For each ECL row, clean/pad the CIK to 10 digits and read `data/companyfacts/CIK##########.json`.
-- SEC data is read once per CIK and reused while iterating rows.
-- Only `facts.us-gaap` and `facts.dei` concepts are considered.
+The sparse generator reads the metadata JSONL configured by
+`config.COMPANYFACTS_METADATA_PATH`. Each row must contain:
 
-## 3) Keep only annual-report facts and match by fiscal year
-- For each concept, flatten all unit arrays (`USD`, shares, etc.) into a single list of data points.
-- Keep only points where `form` contains `10-K`.
-- Match the data point to the row’s filing year using the SEC `fy` field.
-- If matched, write the concept value into that ECL row as a new column.
+- `cik`, used to locate the local SEC companyfacts file.
+- `accession_number`, used to match SEC fact points from the same filing.
+- `cik_adsh`, the filing-level identifier written to the output dataset.
+- `label` and `year`, which are retained as output columns.
 
-## 4) Persist the raw merged output
-- The merged rows (ECL + matched companyfacts concepts) are written to
-  `outputs/ecl_companyfacts_raw.json`.
+## SEC companyfacts lookup
 
-## 5) Post-process to remove rows with zero matched financial concepts
-- The project compares each row’s keys against the original ECL schema.
-- If no additional financial keys are present, the row is dropped.
-- Output is saved to `outputs/ecl_companyfacts.json`.
+For each metadata row, the generator normalizes the row's CIK to a 10-digit
+string and opens `data/companyfacts/CIK##########.json`. Files are cached by CIK
+so each companyfacts JSON is read once and reused for later rows from the same
+company.
+[sparse_dataset_pipeline.md](sparse_dataset_pipeline.md)
+Only concepts under `facts.us-gaap` and `facts.dei` are considered. For each
+concept, all unit arrays are flattened into individual fact points.
 
-## 6) Quantify sparsity per concept
-- Compute per-column null counts / null percentages on the merged dataset,
-  excluding original ECL columns.
-- Save statistics to `outputs/column_statistics.csv`.
+## Accession-based fact matching
 
-## 7) Reduce sparsity by thresholding concepts
-- Keep only columns with null percentage under a configured threshold
-  (example in code: `max_null_percentage=10`).
-- Keep only numeric selected columns.
-- Reattach original ECL columns.
-- Drop rows containing nulls in selected numeric SEC columns.
-- Save final processed dataset to `outputs/ecl_companyfacts_processed.csv`.
+A fact point is accepted when:
 
-## 8) Why this produced a sparse matrix
-- The initial feature space included a very large number of SEC tags.
-- Matching was restricted to annual 10-K data for a specific fiscal year.
-- Company reporting taxonomies differ heavily across issuers (missing / custom tags).
-- Result: many concept columns were null for many firms, yielding a sparse dataset.
+- Its `form` contains `10-K`.
+- Its SEC `accn` value equals the metadata row's `accession_number`.
 
-## 9) Later transition noted in codebase
-- The utility used to call SEC `companyfacts` API is marked as no longer used.
-- The newer path in `main.py` calls `retrieve_sec_tags_and_values(...)`, which pulls values from a local PostgreSQL SEC dataset and mapped canonical concepts.
+The previous fiscal-year match is no longer used. The accession match ties the
+value to the exact filing represented by the metadata row instead of relying on
+the `fy` field.
+
+When a concept has a matching fact point, the generator converts `val` to a
+numeric value. Non-numeric values are ignored. The first matching numeric value
+for a concept is written into that row.
+
+## Output shape
+
+The output CSV starts with:
+
+```text
+cik_adsh,label,year
+```
+
+All discovered numeric companyfacts concepts are appended after those columns in
+sorted order. Rows without a matching value for a concept leave that concept
+blank.

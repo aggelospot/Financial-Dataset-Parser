@@ -12,12 +12,6 @@ import sys
 from typing import List
 from decimal import Decimal
 
-import pandas as pd
-
-from db_connection import retrieve_statement_taxonomies_by_accession_number3, close_connection, create_connection
-from tools.utils import match_concept_in_section
-
-
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -27,23 +21,16 @@ from tools import config
 
 DEFAULT_INPUT_PATH = getattr(config, "COMPANYFACTS_METADATA_PATH", config.ECL_METADATA_NOTEXT_PATH)
 DEFAULT_OUTPUT_PATH = getattr(config, "COMPANYFACTS_DENSE_PATH", os.path.join(config.OUTPUT_DIR, "ecl_with_financial_tags.csv"))
+ACCESSION_NUMBER_COLUMN = "accession_number"
+CIK_ADSH_COLUMN = "cik_adsh"
+BASE_OUTPUT_COLUMNS = (CIK_ADSH_COLUMN, "label", "year")
+REQUIRED_METADATA_COLUMNS = ("cik", ACCESSION_NUMBER_COLUMN, CIK_ADSH_COLUMN, "label", "year", "filing_role", "isXBRL")
 FINANCIAL_SECTIONS = (
     ("IncomeStatement", "IS", [4]),
     ("BalanceSheet", "BS", 0),
     ("CashFlow", "CF", [4]),
     ("StatementOfStockholdersEquity", "EQ", [0]),
 )
-
-
-def _str_to_bool(value: str) -> bool:
-    return str(value).strip().lower() in {"1", "true", "t", "yes", "y"}
-
-
-def _configured_financial_columns() -> List[str]:
-    with open(config.XBRL_MAPPING_PATH, "r", encoding="utf-8") as file:
-        xbrl_mapping = json.load(file)
-
-    return _configured_financial_columns_from_mapping(xbrl_mapping)
 
 
 def _configured_financial_columns_from_mapping(xbrl_mapping: dict) -> List[str]:
@@ -102,39 +89,24 @@ def _write_row(writer: csv.DictWriter, row: dict) -> None:
     writer.writerow({key: _csv_value(value) for key, value in row.items()})
 
 
-def postprocess_dense_csv(output_path: str) -> None:
-    print("postprocessing....")
-    """Drop non-required columns and trim float tails in-place."""
-    df = pd.read_csv(output_path, low_memory=False)
+def _ensure_required_metadata_columns(row: dict, row_number: int) -> None:
+    missing_columns = sorted(column for column in REQUIRED_METADATA_COLUMNS if column not in row)
+    if missing_columns:
+        raise ValueError(
+            f"Input metadata row {row_number} is missing required column(s): {missing_columns}. "
+            "Regenerate metadata with helpers/generate_metadata_dataset.py before building the dense dataset."
+        )
 
-    keep_columns = ["accessionNumber", "label", *_configured_financial_columns()]
-    keep_columns = [col for col in keep_columns if col in df.columns]
-    df = df[keep_columns]
-
-
-    for col in df.columns:
-        if col in {"accessionNumber", "label"}:
-            continue
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    # This trims trailing zeros after decimal point during CSV writing.
-    df.to_csv(output_path, index=False, float_format="%.15g")
-    print("postprocessing finished")
 
 def create_dense_dataset(
     input_path: str,
     output_path: str,
-    postprocess: bool = True,
     max_rows: int | None = None,
 ) -> None:
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    from db_connection import close_connection, create_connection, retrieve_statement_taxonomies_by_accession_number3
+    from tools.utils import match_concept_in_section
 
-    # If output already exists, do postprocessing only; do not rebuild raw output.
-    if os.path.isfile(output_path):
-        print(f"Output already exists at {output_path}. Running postprocessing only.")
-        if postprocess:
-            postprocess_dense_csv(output_path)
-        return
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     conn = None
     try:
@@ -144,38 +116,24 @@ def create_dense_dataset(
             xbrl_mapping = json.load(file)
 
         tag_list = _configured_financial_columns_from_mapping(xbrl_mapping)
-        dense_fieldnames = ["accessionNumber", "label", *tag_list] if postprocess else None
-        tags_fieldnames = ["accession_number", "isXBRL", *tag_list]
+        dense_fieldnames = [*BASE_OUTPUT_COLUMNS, *tag_list]
+        tags_fieldnames = [CIK_ADSH_COLUMN, "isXBRL", *tag_list]
         tags_output_path = os.path.join(config.OUTPUT_DIR, "tags.csv")
         rows_written = 0
-        printed_missing_role_warning = False
 
         with open(output_path, "w", encoding="utf-8", newline="") as dense_file, open(
             tags_output_path, "w", encoding="utf-8", newline=""
         ) as tags_file:
-            dense_writer = None
+            dense_writer = csv.DictWriter(dense_file, fieldnames=dense_fieldnames, extrasaction="ignore")
+            dense_writer.writeheader()
             tags_writer = csv.DictWriter(tags_file, fieldnames=tags_fieldnames, extrasaction="ignore")
             tags_writer.writeheader()
 
             for row in _iter_metadata_rows(input_path, max_rows=max_rows):
-                if dense_fieldnames is None:
-                    dense_fieldnames = [*row.keys(), *[tag for tag in tag_list if tag not in row]]
-                    dense_writer = csv.DictWriter(dense_file, fieldnames=dense_fieldnames, extrasaction="ignore")
-                    dense_writer.writeheader()
-                elif dense_writer is None:
-                    dense_writer = csv.DictWriter(dense_file, fieldnames=dense_fieldnames, extrasaction="ignore")
-                    dense_writer.writeheader()
-
                 print(f"\rCurrent row: {rows_written}", end="")
+                _ensure_required_metadata_columns(row, row_number=rows_written + 1)
 
-                if "filing_role" not in row and not printed_missing_role_warning:
-                    print("\nMetadata has no filing_role column; SEC numeric extraction will be skipped for all rows.")
-                    printed_missing_role_warning = True
-
-                if postprocess:
-                    output_row = {"accessionNumber": row.get("accessionNumber"), "label": row.get("label")}
-                else:
-                    output_row = dict(row)
+                output_row = {column: row.get(column) for column in BASE_OUTPUT_COLUMNS}
                 output_row.update({tag: None for tag in tag_list})
 
                 matched_items = {}
@@ -183,7 +141,7 @@ def create_dense_dataset(
                 is_primary_registrant = str(row.get("filing_role", "")).strip().lower() == "primary_registrant"
 
                 if _is_xbrl_row(row) and is_primary_registrant:
-                    adsh = row["accessionNumber"]
+                    adsh = row[ACCESSION_NUMBER_COLUMN]
 
                     def cache_statement(stmt_code, quarter_spec):
                         tags, labels, vals = retrieve_statement_taxonomies_by_accession_number3(
@@ -206,7 +164,7 @@ def create_dense_dataset(
 
                 if _is_xbrl_row(row):
                     tags_writer.writerow({
-                        "accession_number": row.get("accessionNumber"),
+                        CIK_ADSH_COLUMN: row.get(CIK_ADSH_COLUMN),
                         "isXBRL": 1,
                         **matched_items,
                     })
@@ -219,7 +177,8 @@ def create_dense_dataset(
 
 
     finally:
-        close_connection(conn)
+        if conn is not None:
+            close_connection(conn)
 
 
 def parse_args() -> argparse.Namespace:
@@ -235,12 +194,6 @@ def parse_args() -> argparse.Namespace:
         help="Path to dense CSV output.",
     )
     parser.add_argument(
-        "--postprocess",
-        type=_str_to_bool,
-        default=True,
-        help="Whether to drop non-required columns and trim trailing zeros on float values.",
-    )
-    parser.add_argument(
         "--max-rows",
         type=int,
         default=None,
@@ -254,6 +207,5 @@ if __name__ == "__main__":
     create_dense_dataset(
         input_path=args.input,
         output_path=args.output,
-        postprocess=args.postprocess,
         max_rows=args.max_rows,
     )

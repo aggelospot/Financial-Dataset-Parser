@@ -16,36 +16,14 @@ if PROJECT_ROOT not in sys.path:
 from tools import config
 
 DEFAULT_TEXT_COLUMNS_TO_DROP = ("opinion_text", "item_7")
-KEEP_COLUMNS_POSTPROCESS = ("accessionNumber", "label")
+ACCESSION_NUMBER_COLUMN = "accession_number"
+BASE_OUTPUT_COLUMNS = ("cik_adsh", "label", "year")
 
 
 def clean_cik(cik_value: Any) -> str:
     """Normalize CIK as 10-digit zero-padded string."""
     cik_str = str(cik_value).split(".")[0].strip()
     return cik_str.zfill(10)
-
-
-def extract_year_from_filename(filename: str) -> Optional[int]:
-    """Extract filing year from ECL filename pattern like *-YY-*."""
-    import re
-
-    match = re.search(r"-(\d{2})-", filename)
-    return int("20" + match.group(1)) if match else None
-
-
-def extract_fiscal_year(row: Dict[str, Any]) -> Optional[str]:
-    """Extract the target fiscal year for matching SEC facts."""
-    cik_year = row.get("cik_year")
-    if cik_year:
-        return str(cik_year).split("__")[-1]
-
-    filename = row.get("filename")
-    if filename:
-        year = extract_year_from_filename(str(filename))
-        if year is not None:
-            return str(year)
-
-    return None
 
 
 def iter_data_points(fact_obj: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
@@ -55,14 +33,14 @@ def iter_data_points(fact_obj: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
             yield point
 
 
-def match_value_for_year(fact_obj: Dict[str, Any], fiscal_year: str) -> Any:
-    """Return the first 10-K concept value matching the target fiscal year."""
+def match_value_for_accession(fact_obj: Dict[str, Any], accession_number: str) -> Any:
+    """Return the first 10-K concept value reported by the target accession."""
     for point in iter_data_points(fact_obj):
         form_type = str(point.get("form", ""))
         if "10-K" not in form_type:
             continue
 
-        if str(point.get("fy", "")) == fiscal_year:
+        if str(point.get("accn", "")).strip() == accession_number:
             return point.get("val")
 
     return None
@@ -107,8 +85,8 @@ def extract_numeric_facts_for_row(
     sec_cache: Dict[str, Optional[Dict[str, Any]]],
 ) -> Dict[str, float]:
     """Extract SEC numeric concepts for one input row."""
-    fiscal_year = extract_fiscal_year(row)
-    if fiscal_year is None:
+    accession_number = str(row.get(ACCESSION_NUMBER_COLUMN, "")).strip()
+    if not accession_number:
         return {}
 
     cik_cleaned = clean_cik(row.get("cik", ""))
@@ -124,7 +102,7 @@ def extract_numeric_facts_for_row(
 
     numeric_facts: Dict[str, float] = {}
     for concept_name, fact_obj in all_facts.items():
-        matched_value = match_value_for_year(fact_obj, fiscal_year)
+        matched_value = match_value_for_accession(fact_obj, accession_number)
         if matched_value is None:
             continue
 
@@ -139,11 +117,17 @@ def determine_output_columns(
     input_path: str,
     max_rows: Optional[int],
     drop_columns: Iterable[str],
-    post_process: bool,
 ) -> list[str]:
     """First pass over input to determine CSV columns without materializing rows."""
     input_columns = get_input_columns(input_path=input_path, drop_columns=drop_columns)
-    selected_base_columns = [col for col in KEEP_COLUMNS_POSTPROCESS if col in input_columns] if post_process else sorted(input_columns)
+    required_input_columns = {"cik", ACCESSION_NUMBER_COLUMN, *BASE_OUTPUT_COLUMNS}
+    missing_input_columns = sorted(required_input_columns.difference(input_columns))
+    if missing_input_columns:
+        raise ValueError(
+            f"Input metadata is missing required column(s): {missing_input_columns}. "
+            "Regenerate metadata with helpers/generate_metadata_dataset.py before building the sparse dataset."
+        )
+    selected_base_columns = list(BASE_OUTPUT_COLUMNS)
 
     discovered_numeric_columns: Set[str] = set()
     sec_cache: Dict[str, Optional[Dict[str, Any]]] = {}
@@ -174,7 +158,6 @@ def build_sparse_dataset_csv(
     output_path: str,
     max_rows: Optional[int],
     drop_columns: Iterable[str] = DEFAULT_TEXT_COLUMNS_TO_DROP,
-    post_process: bool = True,
 ) -> None:
     """Two-pass streaming CSV writer for sparse companyfacts without loading full dataset."""
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -183,7 +166,6 @@ def build_sparse_dataset_csv(
         input_path=input_path,
         max_rows=max_rows,
         drop_columns=drop_columns,
-        post_process=post_process,
     )
 
     sec_cache: Dict[str, Optional[Dict[str, Any]]] = {}
@@ -207,14 +189,9 @@ def build_sparse_dataset_csv(
             numeric_facts = extract_numeric_facts_for_row(row=row, sec_cache=sec_cache)
 
             output_row: Dict[str, Any] = {}
-            if post_process:
-                for col in KEEP_COLUMNS_POSTPROCESS:
-                    if col in output_columns:
-                        output_row[col] = row.get(col)
-            else:
-                for col in output_columns:
-                    if col in row:
-                        output_row[col] = row.get(col)
+            for col in BASE_OUTPUT_COLUMNS:
+                if col in output_columns:
+                    output_row[col] = row.get(col)
 
             output_row.update({key: format(value, ".15g") for key, value in numeric_facts.items()})
             writer.writerow(output_row)
@@ -256,12 +233,6 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional row limit for test runs.",
     )
-    parser.add_argument(
-        "--post-process",
-        type=lambda value: str(value).lower() in {"1", "true", "yes", "y"},
-        default=True,
-        help="Whether to keep only numeric SEC columns + accessionNumber + label (default: true).",
-    )
     return parser.parse_args()
 
 
@@ -275,5 +246,4 @@ if __name__ == "__main__":
         input_path=input_path,
         output_path=output_csv_path,
         max_rows=args.max_rows,
-        post_process=args.post_process,
     )
